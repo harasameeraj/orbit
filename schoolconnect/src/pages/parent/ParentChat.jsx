@@ -3,7 +3,7 @@ import { useAuth } from '../../context/AuthContext.jsx'
 import { useData } from '../../context/DataContext.jsx'
 import PageHeader from '../../components/layout/PageHeader.jsx'
 import { Send, Clock, MessageCircle, Loader2 } from 'lucide-react'
-import { subscribeToMessages } from '../../lib/supabase.js'
+import { supabase } from '../../lib/supabase.js'
 
 export default function ParentChat() {
   const { user, profile } = useAuth()
@@ -44,13 +44,11 @@ export default function ParentChat() {
       // Find the class teacher from teacher_classes
       // For now we get teacher_id from behaviour_logs or use a fallback
       // In production, teacher_id comes from teacher_classes where is_class_teacher=true
-      const { data: tc } = await import('../../lib/supabase.js').then(m =>
-        m.supabase.from('teacher_classes')
-          .select('teacher_id, profiles(id, name)')
-          .eq('class_id', student.class_id)
-          .eq('is_class_teacher', true)
-          .single()
-      )
+      const { data: tc } = await supabase.from('teacher_classes')
+        .select('teacher_id, profiles(id, name)')
+        .eq('class_id', student.class_id)
+        .eq('is_class_teacher', true)
+        .single()
 
       const teacherId = tc?.teacher_id
       if (!teacherId) {
@@ -60,13 +58,6 @@ export default function ParentChat() {
 
       const th = await loadMessages(user.id, teacherId, student.id)
       setThread({ ...th, teacher: tc?.profiles })
-
-      // Subscribe to realtime new messages
-      subscriptionRef.current = subscribeToMessages(th.id, (newMsg) => {
-        // DataContext messages state is updated via loadMessages
-        // For realtime we manually append
-        import('../../context/DataContext.jsx')  // trigger re-render via parent
-      })
     } catch (e) {
       console.error('Chat init error:', e)
     }

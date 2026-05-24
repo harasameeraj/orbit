@@ -593,7 +593,7 @@ export async function getStudentFees(schoolId, filters = {}) {
     .from('student_fees')
     .select(`
       *,
-      students(id, name, roll_no, class_id, classes(name)),
+      students!inner(id, name, roll_no, class_id, classes(name)),
       fee_structures(id, name, frequency)
     `)
     .eq('school_id', schoolId)

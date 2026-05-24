@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react'
+import { createContext, useContext, useState, useEffect, useRef } from 'react'
 import { useAuth } from './AuthContext.jsx'
 import {
   getStudentsByClass, getAllStudents,
@@ -31,6 +31,7 @@ export function DataProvider({ children }) {
   const [loadingData,   setLoadingData]   = useState(false)
 
   const schoolId = profile?.school_id
+  const activeChannelRef = useRef(null)
 
   // FIX 6: classId now resolves correctly because getProfile fetches teacher_classes
   // Pick the class where is_class_teacher=true first, else first assignment
@@ -42,6 +43,14 @@ export function DataProvider({ children }) {
     if (!profile) return
     loadInitialData()
   }, [profile?.id]) // only re-run when the logged-in user changes
+
+  useEffect(() => {
+    return () => {
+      if (activeChannelRef.current) {
+        supabase.removeChannel(activeChannelRef.current)
+      }
+    }
+  }, [])
 
   async function loadInitialData() {
     if (!schoolId) return
@@ -100,10 +109,10 @@ export function DataProvider({ children }) {
 
   async function loadParentData(studentId, studentClassId) {
     const today    = new Date().toISOString().split('T')[0]
-    const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0]
+    const rangeStart = new Date(Date.now() - 180 * 86400000).toISOString().split('T')[0]
 
     const [att, mks, hw, anns, beh, tt] = await Promise.all([
-      getStudentAttendance(studentId, monthAgo, today),
+      getStudentAttendance(studentId, rangeStart, today),
       getMarksByStudent(studentId),
       studentClassId ? getHomeworkByClass(studentClassId)  : Promise.resolve([]),
       studentClassId ? getAnnouncements(studentClassId)    : Promise.resolve([]),
@@ -205,9 +214,24 @@ export function DataProvider({ children }) {
   }
 
   const loadMessages = async (parentId, teacherId, studentId) => {
+    if (activeChannelRef.current) {
+      supabase.removeChannel(activeChannelRef.current)
+      activeChannelRef.current = null
+    }
+
     const thread = await getOrCreateThread(parentId, teacherId, studentId, schoolId)
     const msgs   = await getMessages(thread.id)
     setMessages(msgs || [])
+
+    // Subscribe to new messages
+    const channel = subscribeToMessages(thread.id, (newMsg) => {
+      setMessages(prev => {
+        if (prev.some(m => m.id === newMsg.id)) return prev
+        return [...prev, newMsg]
+      })
+    })
+    activeChannelRef.current = channel
+
     return thread
   }
 

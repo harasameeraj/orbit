@@ -1,12 +1,13 @@
 import { Outlet } from 'react-router-dom'
 import Sidebar from './Sidebar.jsx'
-import { LayoutDashboard, CheckSquare, Star, Users, User } from 'lucide-react'
+import { LayoutDashboard, CheckSquare, Star, Users, User, MessageSquare } from 'lucide-react'
 
 const LINKS = [
   { to: '/teacher', label: 'Dashboard', Icon: LayoutDashboard },
   { to: '/teacher/attendance', label: 'Attendance', Icon: CheckSquare },
   { to: '/teacher/marks', label: 'Marks', Icon: Star },
   { to: '/teacher/students', label: 'Students', Icon: Users },
+  { to: '/teacher/chat', label: 'Chat', Icon: MessageSquare },
   { to: '/teacher/profile', label: 'Profile', Icon: User },
 ]
 

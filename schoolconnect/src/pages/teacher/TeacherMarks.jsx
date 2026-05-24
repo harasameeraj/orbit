@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { useData } from '../../context/DataContext.jsx'
 import PageHeader from '../../components/layout/PageHeader.jsx'
 import { Upload, Save, Plus, Loader2 } from 'lucide-react'
-import { upsertMarks, publishMarks } from '../../lib/supabase.js'
+import { upsertMarks, publishMarks, getMarksByClass } from '../../lib/supabase.js'
 import { supabase } from '../../lib/supabase.js'
 
 const SUBJECTS = ['Mathematics', 'Science', 'English', 'Social Studies', 'Hindi', 'Physical Education']
@@ -14,6 +14,9 @@ export default function TeacherMarks() {
   const { students, addHomework } = useData()
 
   const [tab, setTab] = useState('marks')
+
+  const classId = profile?.teacher_classes?.[0]?.class_id
+  const schoolId = profile?.school_id
 
   // Marks state
   const [subject, setSubject] = useState('Mathematics')
@@ -31,15 +34,38 @@ export default function TeacherMarks() {
   const [hwLoading, setHwLoading] = useState(false)
   const [hwMsg, setHwMsg] = useState({ type: '', text: '' })
 
-  // Reset scores when subject/exam changes
+  // Reset scores and fetch existing marks when subject/exam/students change
+  useEffect(() => {
+    if (!classId || !subject || !examType || !students.length) {
+      if (students.length) {
+        setScores(Object.fromEntries(students.map(s => [s.id, ''])))
+      }
+      return
+    }
+
+    const loadExistingScores = async () => {
+      try {
+        const data = await getMarksByClass(classId, subject, examType)
+        const dbScores = {}
+        students.forEach(s => { dbScores[s.id] = '' })
+        if (data && data.length > 0) {
+          data.forEach(row => {
+            dbScores[row.student_id] = row.score.toString()
+          })
+        }
+        setScores(dbScores)
+      } catch (err) {
+        console.error('Failed to load marks:', err)
+      }
+    }
+
+    loadExistingScores()
+  }, [classId, subject, examType, students])
+
   const handleSubjectChange = (val) => {
     setSubject(val)
-    setScores(Object.fromEntries(students.map(s => [s.id, ''])))
     setMarksMsg({ type: '', text: '' })
   }
-
-  const classId = profile?.teacher_classes?.[0]?.class_id
-  const schoolId = profile?.school_id
 
   // Build upsert records from current scores
   const buildRecords = (published) =>

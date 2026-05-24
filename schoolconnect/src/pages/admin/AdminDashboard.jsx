@@ -2,10 +2,10 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useData } from '../../context/DataContext.jsx'
 import { useAuth } from '../../context/AuthContext.jsx'
-import { supabase, getSchoolStats, getCalendarEvents, getWeeklyAttendanceStats } from '../../lib/supabase.js'
+import { supabase, getSchoolStats, getCalendarEvents, getWeeklyAttendanceStats, getFeeStats, getClassesBySchool } from '../../lib/supabase.js'
 import PageHeader from '../../components/layout/PageHeader.jsx'
-import { Users, GraduationCap, CheckCircle2, TrendingUp, Bell, Calendar, Plus, ChevronRight } from 'lucide-react'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts'
+import { Users, GraduationCap, CheckCircle2, TrendingUp, Bell, Calendar, Plus, ChevronRight, IndianRupee, BookOpen, School } from 'lucide-react'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 
 const WEEKLY_ATT_DEFAULT = [
   { day: 'Mon', present: 0, late: 0 },
@@ -24,6 +24,16 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState({ totalStudents: null, totalTeachers: null, attendancePct: null, attendanceMarked: false })
   const [upcomingEvents, setUpcomingEvents] = useState([])
   const [weeklyAtt, setWeeklyAtt] = useState(WEEKLY_ATT_DEFAULT)
+  const [feeStats, setFeeStats] = useState(null)
+  const [totalClasses, setTotalClasses] = useState(null)
+
+  // Compute current academic session dynamically
+  const now = new Date()
+  const acadYear = now.getMonth() >= 3
+    ? `${now.getFullYear()}-${(now.getFullYear() + 1).toString().slice(-2)}`
+    : `${now.getFullYear() - 1}-${now.getFullYear().toString().slice(-2)}`
+
+  const schoolName = profile?.schools?.name || 'School'
 
   useEffect(() => {
     if (!profile?.school_id) return
@@ -37,6 +47,12 @@ export default function AdminDashboard() {
       .catch(console.warn)
     getWeeklyAttendanceStats(profile.school_id)
       .then(rows => setWeeklyAtt(rows))
+      .catch(console.warn)
+    getFeeStats(profile.school_id)
+      .then(fs => setFeeStats(fs))
+      .catch(console.warn)
+    getClassesBySchool(profile.school_id)
+      .then(cls => setTotalClasses(cls?.length ?? null))
       .catch(console.warn)
   }, [profile?.school_id])
 
@@ -64,7 +80,7 @@ export default function AdminDashboard() {
 
   return (
     <div className="animate-fade-in">
-      <PageHeader title="EduAdmin" subtitle="St. Xavier's International Academy" />
+      <PageHeader title="Admin Dashboard" subtitle={schoolName} />
       <div style={{ padding: '28px 32px', maxWidth: 1200, margin: '0 auto' }}>
 
         {/* KPI Stats */}
@@ -112,17 +128,26 @@ export default function AdminDashboard() {
           <div className="card" style={{ padding: 24, display: 'flex', flexDirection: 'column' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
               <div>
-                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', letterSpacing: .5, marginBottom: 4 }}>THIS MONTH</div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', letterSpacing: .5, marginBottom: 4 }}>FEE REMINDERS</div>
                 <div style={{ fontWeight: 800, fontSize: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Bell size={18} color="var(--brand)" /> Fee Reminders
+                  <Bell size={18} color="var(--brand)" /> Send Reminder
                 </div>
               </div>
-              <span className="badge badge-green">480 Sent</span>
+              {feeStats && feeStats.totalCount > 0 && (
+                <span className="badge badge-green">{feeStats.paidCount}/{feeStats.totalCount} Paid</span>
+              )}
             </div>
-            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>480 Reminders sent successfully</p>
+            {feeStats ? (
+              <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
+                ₹{feeStats.collected.toLocaleString('en-IN')} collected • ₹{feeStats.pending.toLocaleString('en-IN')} pending
+                {feeStats.overdue > 0 && <span style={{ color: 'var(--accent-red)', fontWeight: 600 }}> • {feeStats.overdue} overdue</span>}
+              </p>
+            ) : (
+              <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>Send fee reminders to all parents at once</p>
+            )}
             {feeSent && <div style={{ background: 'var(--accent-green-light)', color: 'var(--accent-green)', padding: '10px 12px', borderRadius: 8, fontSize: 13, fontWeight: 600, marginBottom: 12 }}>✓ Fee reminders sent to all parents!</div>}
             <textarea className="form-input form-textarea" rows={3} placeholder="Enter fee reminder message..." value={feeMsg} onChange={e => setFeeMsg(e.target.value)} style={{ marginBottom: 12, fontSize: 13 }} />
-            <button className="btn btn-primary" onClick={sendFeeReminder} disabled={feeSending}>{feeSending ? 'Sending…' : 'Send New Batch'}</button>
+            <button className="btn btn-primary" onClick={sendFeeReminder} disabled={feeSending}>{feeSending ? 'Sending…' : 'Send Reminder'}</button>
           </div>
         </div>
 
@@ -174,9 +199,9 @@ export default function AdminDashboard() {
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 3 }}>{notice.title}</div>
                     <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                      {notice.body.slice(0, 55)}...
+                      {(notice.body || '').slice(0, 55)}{(notice.body || '').length > 55 ? '…' : ''}
                     </div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{notice.date}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{notice.created_at ? new Date(notice.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : ''}</div>
                   </div>
                   <ChevronRight size={16} color="var(--text-muted)" style={{ flexShrink: 0, marginTop: 2 }} />
                 </div>
@@ -190,14 +215,15 @@ export default function AdminDashboard() {
           <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 14 }}>School Overview</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
             {[
-              { label: 'Library Inventory', color: '#1a3a6b', emoji: '📚' },
-              { label: 'Tech Infrastructure', color: '#0891b2', emoji: '💻' },
-              { label: 'Auditorium Status', color: '#7c3aed', emoji: '🎭' },
-              { label: 'Cafeteria Reports', color: '#16a34a', emoji: '🍽️' },
-            ].map(({ label, color, emoji }) => (
-              <div key={label} style={{ background: color, borderRadius: 14, padding: '20px 16px', color: 'white', cursor: 'pointer', position: 'relative', overflow: 'hidden', minHeight: 100 }}>
-                <div style={{ position: 'absolute', right: 12, bottom: 8, fontSize: 40, opacity: .3 }}>{emoji}</div>
-                <div style={{ fontWeight: 700, fontSize: 14, position: 'relative' }}>{label}</div>
+              { label: 'Total Classes', value: totalClasses !== null ? totalClasses : '—', color: '#1a3a6b', Icon: School },
+              { label: 'Academic Year', value: acadYear, color: '#0891b2', Icon: BookOpen },
+              { label: 'Fee Collection', value: feeStats ? `${Math.round((feeStats.collected / (feeStats.total || 1)) * 100)}%` : '—', color: '#7c3aed', Icon: IndianRupee },
+              { label: 'Active Notices', value: notices.length, color: '#16a34a', Icon: Bell },
+            ].map(({ label, value, color, Icon }) => (
+              <div key={label} style={{ background: color, borderRadius: 14, padding: '20px 16px', color: 'white', position: 'relative', overflow: 'hidden', minHeight: 100 }}>
+                <div style={{ position: 'absolute', right: 12, bottom: 8, opacity: .15 }}><Icon size={48} /></div>
+                <div style={{ fontWeight: 700, fontSize: 14, position: 'relative', marginBottom: 8 }}>{label}</div>
+                <div style={{ fontWeight: 900, fontSize: 24, position: 'relative' }}>{value}</div>
               </div>
             ))}
           </div>

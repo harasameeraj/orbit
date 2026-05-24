@@ -1,21 +1,22 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { useData } from '../../context/DataContext.jsx'
 import PageHeader from '../../components/layout/PageHeader.jsx'
-import { Search, Plus, X, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
-import { supabase } from '../../lib/supabase.js'
+import { Search, Plus, X, ChevronLeft, ChevronRight, Loader2, Pencil, Trash2 } from 'lucide-react'
+import { supabase, getClassesBySchool } from '../../lib/supabase.js'
 
 const PAGE_SIZE = 8
 
 export default function AdminUsers() {
   const { user, profile } = useAuth()
-  const { students } = useData()
+  const { students, reloadData } = useData()
   const [tab, setTab] = useState('students')
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [showAdd, setShowAdd] = useState(false)
   const [teachers, setTeachers] = useState([])
   const [teachersLoaded, setTeachersLoaded] = useState(false)
+  const [classes, setClasses] = useState([])
 
   const [form, setForm] = useState({
     name: '', email: '', roll_no: '', class_id: '',
@@ -23,6 +24,28 @@ export default function AdminUsers() {
   })
   const [formLoading, setFormLoading] = useState(false)
   const [formMsg, setFormMsg] = useState({ type: '', text: '' })
+
+  // Edit state
+  const [editItem, setEditItem] = useState(null)
+  const [editForm, setEditForm] = useState({})
+  const [editLoading, setEditLoading] = useState(false)
+  const [editMsg, setEditMsg] = useState({ type: '', text: '' })
+
+  // Remove state
+  const [removeItem, setRemoveItem] = useState(null)
+  const [removeLoading, setRemoveLoading] = useState(false)
+
+  // Fetch classes list for school
+  useEffect(() => {
+    if (profile?.school_id) {
+      getClassesBySchool(profile.school_id).then(res => {
+        setClasses(res || [])
+        if (res && res.length > 0) {
+          setForm(f => ({ ...f, class_id: res[0].id }))
+        }
+      })
+    }
+  }, [profile?.school_id])
 
   // Load teachers when tab switches
   const handleTabChange = async (t) => {
@@ -53,9 +76,34 @@ export default function AdminUsers() {
       setFormMsg({ type: 'error', text: 'Name and email are required.' })
       return
     }
+    if (tab === 'students' && !form.class_id) {
+      setFormMsg({ type: 'error', text: 'Please select a class for the student.' })
+      return
+    }
     setFormLoading(true)
     setFormMsg({ type: '', text: '' })
     try {
+      let studentId = null
+
+      // 1. If adding a student, create the student database row first to obtain a studentId
+      if (tab === 'students') {
+        const { data: newStudent, error: studentErr } = await supabase
+          .from('students')
+          .insert({
+            school_id: profile?.school_id,
+            class_id: form.class_id,
+            name: form.name,
+            roll_no: form.roll_no || '—',
+            father_name: form.father_name || '',
+          })
+          .select('id')
+          .single()
+
+        if (studentErr) throw studentErr
+        studentId = newStudent.id
+      }
+
+      // 2. Invite the user (parent/teacher) and pass studentId if applicable
       const { data, error } = await supabase.functions.invoke('invite-user', {
         body: {
           email: form.email,
@@ -64,34 +112,81 @@ export default function AdminUsers() {
           school_id: profile?.school_id,
           ...(form.subject && { subject: form.subject }),
           ...(form.class_id && { class_id: form.class_id }),
+          ...(studentId && { student_id: studentId }),
         }
       })
       if (error) throw error
 
-      // If student: also create the student row
-      if (tab === 'students' && form.roll_no) {
-        const { data: classes } = await supabase
-          .from('classes')
-          .select('id')
-          .eq('school_id', profile?.school_id)
-          .limit(1)
-          .single()
-
-        await supabase.from('students').insert({
-          school_id: profile?.school_id,
-          class_id: classes?.id || form.class_id,
-          name: form.name,
-          roll_no: form.roll_no,
-          father_name: form.father_name,
-        })
-      }
-
-      setFormMsg({ type: 'success', text: `Invite sent to ${form.email}! They will receive a magic link to set their password.` })
-      setForm({ name: '', email: '', roll_no: '', class_id: '', father_name: '', phone: '', subject: '', role: 'parent' })
+      setFormMsg({ type: 'success', text: `Invite sent to ${form.email}! They will receive an email to set their password.` })
+      setForm({ name: '', email: '', roll_no: '', class_id: classes[0]?.id || '', father_name: '', phone: '', subject: '', role: 'parent' })
     } catch (e) {
       setFormMsg({ type: 'error', text: e.message || 'Failed to invite user.' })
     }
     setFormLoading(false)
+  }
+
+  // ── Edit handler ────────────────────────────────────────────────────────────
+  const openEdit = (item) => {
+    setEditMsg({ type: '', text: '' })
+    if (tab === 'students') {
+      setEditForm({ name: item.name || '', roll_no: item.roll_no || '', class_id: item.class_id || '', father_name: item.father_name || '' })
+    } else {
+      setEditForm({ name: item.name || '', email: item.email || '' })
+    }
+    setEditItem(item)
+  }
+
+  const handleEdit = async () => {
+    if (!editForm.name?.trim()) { setEditMsg({ type: 'error', text: 'Name is required.' }); return }
+    setEditLoading(true)
+    setEditMsg({ type: '', text: '' })
+    try {
+      if (tab === 'students') {
+        const { error } = await supabase.from('students').update({
+          name: editForm.name, roll_no: editForm.roll_no, class_id: editForm.class_id, father_name: editForm.father_name
+        }).eq('id', editItem.id)
+        if (error) throw error
+      } else {
+        const { error } = await supabase.from('profiles').update({ name: editForm.name }).eq('id', editItem.id)
+        if (error) throw error
+      }
+      setEditMsg({ type: 'success', text: 'Updated successfully!' })
+      // Reload the relevant list
+      if (tab === 'students') {
+        reloadData()
+      } else {
+        const { data } = await supabase.from('profiles').select('*, teacher_classes(classes(name), subject)').eq('school_id', profile?.school_id).eq('role', 'teacher').order('name')
+        setTeachers(data || [])
+      }
+      setTimeout(() => setEditItem(null), 1200)
+    } catch (e) {
+      setEditMsg({ type: 'error', text: e.message || 'Update failed.' })
+    }
+    setEditLoading(false)
+  }
+
+  // ── Remove handler ──────────────────────────────────────────────────────────
+  const handleRemove = async () => {
+    if (!removeItem) return
+    setRemoveLoading(true)
+    try {
+      if (tab === 'students') {
+        const { error } = await supabase.from('students').delete().eq('id', removeItem.id)
+        if (error) throw error
+        reloadData()
+      } else {
+        // Deactivate teacher: remove their class assignments and mark inactive
+        await supabase.from('teacher_classes').delete().eq('teacher_id', removeItem.id)
+        const { error } = await supabase.from('profiles').update({ role: 'deactivated' }).eq('id', removeItem.id)
+        if (error) throw error
+        const { data } = await supabase.from('profiles').select('*, teacher_classes(classes(name), subject)').eq('school_id', profile?.school_id).eq('role', 'teacher').order('name')
+        setTeachers(data || [])
+      }
+      setRemoveItem(null)
+    } catch (e) {
+      console.error('Remove failed:', e)
+    }
+    setRemoveLoading(false)
   }
 
   return (
@@ -156,8 +251,8 @@ export default function AdminUsers() {
                   </td>
                   <td style={{ padding: '14px 20px' }}>
                     <div style={{ display: 'flex', gap: 6 }}>
-                      <button className="btn btn-ghost btn-sm">Edit</button>
-                      <button className="btn btn-sm" style={{ background: 'var(--accent-red-light)', color: 'var(--accent-red)', border: 'none' }}>Remove</button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => openEdit(item)}><Pencil size={13} /> Edit</button>
+                      <button className="btn btn-sm" style={{ background: 'var(--accent-red-light)', color: 'var(--accent-red)', border: 'none' }} onClick={() => setRemoveItem(item)}><Trash2 size={13} /> Remove</button>
                     </div>
                   </td>
                 </tr>
@@ -206,6 +301,18 @@ export default function AdminUsers() {
                   <label className="form-label">Email *</label>
                   <input className="form-input" type="email" placeholder="user@school.edu.in" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
                 </div>
+                
+                {/* Class Select Dropdown */}
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label className="form-label">Class *</label>
+                  <select className="form-input form-select" value={form.class_id} onChange={e => setForm(f => ({ ...f, class_id: e.target.value }))}>
+                    <option value="">Select a Class...</option>
+                    {classes.map(c => (
+                      <option key={c.id} value={c.id}>Class {c.grade} – {c.name}</option>
+                    ))}
+                  </select>
+                </div>
+
                 {tab === 'students' ? (<>
                   <div className="form-group">
                     <label className="form-label">Roll No</label>
@@ -216,7 +323,7 @@ export default function AdminUsers() {
                     <input className="form-input" placeholder="e.g. Mr. Sunil Sharma" value={form.father_name} onChange={e => setForm(f => ({ ...f, father_name: e.target.value }))} />
                   </div>
                 </>) : (<>
-                  <div className="form-group">
+                  <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                     <label className="form-label">Subject</label>
                     <input className="form-input" placeholder="e.g. Mathematics" value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))} />
                   </div>
@@ -233,6 +340,78 @@ export default function AdminUsers() {
               <p style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', marginTop: 12 }}>
                 An invitation email with a login link will be sent automatically
               </p>
+            </div>
+          </div>
+        )}
+        {/* Edit Modal */}
+        {editItem && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }} onClick={() => setEditItem(null)}>
+            <div className="card-lg" style={{ padding: 32, width: 480, background: 'var(--surface)', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+                <h2 style={{ fontSize: 20, fontWeight: 800 }}>Edit {tab === 'students' ? 'Student' : 'Teacher'}</h2>
+                <button onClick={() => setEditItem(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><X size={20} /></button>
+              </div>
+              {editMsg.text && (
+                <div style={{ background: editMsg.type === 'success' ? 'var(--accent-green-light)' : 'var(--accent-red-light)', color: editMsg.type === 'success' ? 'var(--accent-green)' : 'var(--accent-red)', padding: '12px 14px', borderRadius: 8, fontWeight: 600, marginBottom: 16, fontSize: 14 }}>
+                  {editMsg.text}
+                </div>
+              )}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label className="form-label">Full Name *</label>
+                  <input className="form-input" value={editForm.name || ''} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} />
+                </div>
+                {tab === 'students' && (<>
+                  <div className="form-group">
+                    <label className="form-label">Roll No</label>
+                    <input className="form-input" value={editForm.roll_no || ''} onChange={e => setEditForm(f => ({ ...f, roll_no: e.target.value }))} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Father's Name</label>
+                    <input className="form-input" value={editForm.father_name || ''} onChange={e => setEditForm(f => ({ ...f, father_name: e.target.value }))} />
+                  </div>
+                  <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                    <label className="form-label">Class</label>
+                    <select className="form-input form-select" value={editForm.class_id || ''} onChange={e => setEditForm(f => ({ ...f, class_id: e.target.value }))}>
+                      <option value="">Select a Class...</option>
+                      {classes.map(c => (
+                        <option key={c.id} value={c.id}>Class {c.grade} – {c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </>)}
+              </div>
+              <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+                <button className="btn btn-primary btn-full btn-lg" onClick={handleEdit} disabled={editLoading}>
+                  {editLoading ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : null}
+                  {editLoading ? 'Saving…' : 'Save Changes'}
+                </button>
+                <button className="btn btn-ghost btn-lg" onClick={() => setEditItem(null)}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Remove Confirmation */}
+        {removeItem && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }} onClick={() => setRemoveItem(null)}>
+            <div className="card-lg" style={{ padding: 32, width: 420, background: 'var(--surface)', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+              <div style={{ width: 56, height: 56, background: 'var(--accent-red-light)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
+                <Trash2 size={24} color="var(--accent-red)" />
+              </div>
+              <h2 style={{ fontSize: 18, fontWeight: 800, marginBottom: 8 }}>Remove {removeItem.name}?</h2>
+              <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 24, lineHeight: 1.6 }}>
+                {tab === 'students'
+                  ? 'This will permanently delete this student and all their associated records (attendance, marks, etc.). This action cannot be undone.'
+                  : 'This will deactivate this teacher account and remove their class assignments. The account can be re-activated later.'}
+              </p>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+                <button className="btn btn-lg" style={{ background: 'var(--accent-red)', color: 'white', border: 'none', padding: '12px 28px' }} onClick={handleRemove} disabled={removeLoading}>
+                  {removeLoading ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Trash2 size={16} />}
+                  {removeLoading ? 'Removing…' : 'Yes, Remove'}
+                </button>
+                <button className="btn btn-ghost btn-lg" onClick={() => setRemoveItem(null)}>Cancel</button>
+              </div>
             </div>
           </div>
         )}

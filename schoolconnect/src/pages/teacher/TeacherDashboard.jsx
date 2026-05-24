@@ -10,6 +10,12 @@ export default function TeacherDashboard() {
   const { students, attendance, homework, announcements } = useData()
   const today = new Date().toISOString().split('T')[0]
 
+  // Dynamic academic year (Indian school year: April-March)
+  const nowDate = new Date()
+  const acadYear = nowDate.getMonth() >= 3
+    ? `${nowDate.getFullYear()}-${(nowDate.getFullYear() + 1).toString().slice(-2)}`
+    : `${nowDate.getFullYear() - 1}-${nowDate.getFullYear().toString().slice(-2)}`
+
   const todayDate = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })
 
   // Check today's attendance status
@@ -33,7 +39,7 @@ export default function TeacherDashboard() {
           <div style={{ fontSize: 12, fontWeight: 600, opacity: .75, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>{profile?.schools?.name || 'School'}</div>
           <div style={{ fontSize: 24, fontWeight: 800, marginBottom: 4 }}>{todayDate}</div>
           <span style={{ background: 'rgba(255,255,255,.2)', borderRadius: 99, padding: '4px 14px', fontSize: 13, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <BookOpen size={14} /> Academic Session 2023-24
+            <BookOpen size={14} /> Academic Session {acadYear}
           </span>
         </div>
 
@@ -54,8 +60,8 @@ export default function TeacherDashboard() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, color: 'var(--text-muted)', fontSize: 13, fontWeight: 600 }}>
               <Star size={16} /> Marks
             </div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--accent-amber)' }}>Pending</div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Unit Test - II</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--accent-green)' }}>Up to date</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>All marks uploaded</div>
           </div>
           <div className="card" style={{ padding: 20 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, color: 'var(--text-muted)', fontSize: 13, fontWeight: 600 }}>
@@ -64,7 +70,7 @@ export default function TeacherDashboard() {
             <div style={{ fontSize: 22, fontWeight: 800 }}>{presentToday}/{students.length}</div>
             <div style={{ marginTop: 8 }}>
               <div className="progress-bar">
-                <div className="progress-fill progress-green" style={{ width: `${(presentToday / students.length) * 100}%` }} />
+                <div className="progress-fill progress-green" style={{ width: `${students.length > 0 ? (presentToday / students.length) * 100 : 0}%` }} />
               </div>
             </div>
           </div>
@@ -130,33 +136,45 @@ export default function TeacherDashboard() {
               <Link to="/teacher/marks" style={{ fontSize: 13, color: 'var(--brand)', fontWeight: 600, textDecoration: 'none' }}>+ Post New</Link>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {homework.slice(0, 3).map(hw => (
-                <div key={hw.id} className="card" style={{ padding: '14px 16px' }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{hw.title}</div>
-                      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{hw.subject} • Due {hw.dueDate}</div>
-                    </div>
-                    <span className={`badge ${hw.status === 'completed' ? 'badge-green' : 'badge-amber'}`} style={{ fontSize: 11, flexShrink: 0 }}>
-                      {hw.status}
-                    </span>
-                  </div>
+              {homework.length === 0 ? (
+                <div className="card" style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+                  No homework posted yet
                 </div>
-              ))}
+              ) : homework.slice(0, 3).map(hw => {
+                const dueDate = hw.due_date || hw.dueDate || ''
+                const isPastDue = dueDate && new Date(dueDate) < new Date()
+                const statusLabel = isPastDue ? 'Past Due' : 'Active'
+                const statusClass = isPastDue ? 'badge-amber' : 'badge-green'
+                return (
+                  <div key={hw.id} className="card" style={{ padding: '14px 16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{hw.title}</div>
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{hw.subject} • Due {dueDate ? new Date(dueDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—'}</div>
+                      </div>
+                      <span className={`badge ${statusClass}`} style={{ fontSize: 11, flexShrink: 0 }}>
+                        {statusLabel}
+                      </span>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
 
-            {/* Alerts */}
-            <div style={{ marginTop: 14 }}>
-              <div className="card" style={{ padding: '14px 16px', borderLeft: '3px solid var(--accent-amber)', borderRadius: '0 12px 12px 0' }}>
-                <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                  <AlertCircle size={16} color="var(--accent-amber)" style={{ flexShrink: 0, marginTop: 1 }} />
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>Unit Test II marks pending</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>3 students missing marks for Mathematics</div>
+            {/* Dynamic Alerts */}
+            {homework.length > 0 && (
+              <div style={{ marginTop: 14 }}>
+                <div className="card" style={{ padding: '14px 16px', borderLeft: `3px solid ${announcements.length > 0 ? 'var(--accent-green)' : 'var(--accent-amber)'}`, borderRadius: '0 12px 12px 0' }}>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                    <AlertCircle size={16} color={announcements.length > 0 ? 'var(--accent-green)' : 'var(--accent-amber)'} style={{ flexShrink: 0, marginTop: 1 }} />
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>{homework.length} homework assigned</div>
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{announcements.length} announcement{announcements.length !== 1 ? 's' : ''} posted</div>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       </div>

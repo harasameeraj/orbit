@@ -3,7 +3,7 @@ import { useAuth } from '../../context/AuthContext.jsx'
 import { GraduationCap, LogOut } from 'lucide-react'
 
 export default function Sidebar({ links, role }) {
-  const { user, logout } = useAuth()
+  const { user, profile, logout } = useAuth()
 
   const roleColors = { admin: '#7c3aed', teacher: 'var(--brand)', parent: '#16a34a' }
   const roleColor = roleColors[role] || 'var(--brand)'
@@ -26,11 +26,23 @@ export default function Sidebar({ links, role }) {
       {/* User */}
       <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div className="avatar" style={{ background: roleColor + '20', color: roleColor }}>{user?.name?.charAt(0)}</div>
+          <div className="avatar" style={{ background: roleColor + '20', color: roleColor }}>
+            {(profile?.name || user?.email || '?').charAt(0).toUpperCase()}
+          </div>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user?.name}</div>
-            {user?.class && <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Class {user.class}</div>}
-            {user?.school && <div style={{ fontSize: 12, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.school}</div>}
+            <div style={{ fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {profile?.name || user?.email}
+            </div>
+            {profile?.role === 'teacher' && profile?.teacher_classes?.[0]?.classes?.name && (
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                Class {profile.teacher_classes[0].classes.name}
+              </div>
+            )}
+            {profile?.schools?.name && (
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>
+                {profile.schools.name}
+              </div>
+            )}
           </div>
         </div>
       </div>

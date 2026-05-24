@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext.jsx'
 import { DataProvider } from './context/DataContext.jsx'
 import NotificationToast from './components/shared/NotificationToast.jsx'
+import ErrorBoundary from './components/shared/ErrorBoundary.jsx'
 
 import LoginPage from './pages/auth/LoginPage.jsx'
 
@@ -11,6 +12,7 @@ import TeacherAttendance from './pages/teacher/TeacherAttendance.jsx'
 import TeacherMarks from './pages/teacher/TeacherMarks.jsx'
 import TeacherStudents from './pages/teacher/TeacherStudents.jsx'
 import TeacherProfile from './pages/teacher/TeacherProfile.jsx'
+import TeacherChat from './pages/teacher/TeacherChat.jsx'
 
 import ParentLayout from './components/layout/ParentLayout.jsx'
 import ParentDashboard from './pages/parent/ParentDashboard.jsx'
@@ -58,6 +60,7 @@ export default function App() {
       <DataProvider>
         <BrowserRouter>
           <NotificationToast />
+          <ErrorBoundary>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/" element={<RoleRedirect />} />
@@ -68,6 +71,7 @@ export default function App() {
               <Route path="marks" element={<TeacherMarks />} />
               <Route path="students" element={<TeacherStudents />} />
               <Route path="profile" element={<TeacherProfile />} />
+              <Route path="chat" element={<TeacherChat />} />
             </Route>
 
             <Route path="/parent" element={<ProtectedRoute role="parent"><ParentLayout /></ProtectedRoute>}>
@@ -88,6 +92,7 @@ export default function App() {
               <Route path="fees" element={<AdminFees />} />
             </Route>
           </Routes>
+          </ErrorBoundary>
         </BrowserRouter>
       </DataProvider>
     </AuthProvider>

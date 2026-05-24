@@ -10,7 +10,7 @@ const ALBUM_COLORS = ['#1a3a6b', '#0891b2', '#16a34a', '#7c3aed']
 
 export default function AdminNoticeboard() {
   const { user, profile } = useAuth()
-  const { notices, eventPhotos, addNotice, toggleNotice } = useData()
+  const { notices, eventPhotos, addNotice, toggleNotice, reloadData } = useData()
 
   const [tab, setTab] = useState('notices')
   const [showAdd, setShowAdd] = useState(false)
@@ -29,9 +29,12 @@ export default function AdminNoticeboard() {
 
   // Delete notice
   const handleDelete = async (id) => {
-    await supabase.from('notices').delete().eq('id', id)
-    // Optimistic: remove from local state via reload
-    window.location.reload()
+    try {
+      await supabase.from('notices').delete().eq('id', id)
+      reloadData()
+    } catch (err) {
+      console.error('Failed to delete notice:', err)
+    }
   }
 
   const handlePost = async () => {
