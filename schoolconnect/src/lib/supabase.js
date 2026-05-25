@@ -714,6 +714,32 @@ export async function getFeeReminderHistory(schoolId) {
   return data || []
 }
 
+// ─── Teacher Assignment Management ───────────────────────────────────────────
+
+export async function getTeacherAssignments(teacherId) {
+  const { data, error } = await supabase
+    .from('teacher_classes')
+    .select('*, classes(id, name, grade, section)')
+    .eq('teacher_id', teacherId)
+  if (error) throw error
+  return data || []
+}
+
+export async function addTeacherAssignment({ teacher_id, class_id, school_id, subject, is_class_teacher }) {
+  const { data, error } = await supabase
+    .from('teacher_classes')
+    .insert({ teacher_id, class_id, school_id, subject, is_class_teacher: is_class_teacher || false })
+    .select('*, classes(id, name, grade, section)')
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function removeTeacherAssignment(id) {
+  const { error } = await supabase.from('teacher_classes').delete().eq('id', id)
+  if (error) throw error
+}
+
 // ─── Teacher Mobile compatibility functions ───────────────────────────────────
 
 export async function getTeacherClasses(teacherId) {

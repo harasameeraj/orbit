@@ -6,6 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 # Web app (from schoolconnect/)
+npm install
 npm run dev       # http://localhost:5173
 npm run build
 npm run preview
@@ -57,7 +58,7 @@ src/
 - **Parent**: loads their linked students via `parent_students`, then loads attendance, marks, homework, announcements, behaviour logs, timetable for the first student.
 - **Admin**: loads all students, notices, event albums for the school.
 
-All Supabase queries live exclusively in `src/lib/supabase.js`. Pages and components call context actions (`markAttendance`, `addHomework`, etc.) — they never import from `supabase.js` directly.
+All Supabase queries live exclusively in `src/lib/supabase.js`. Pages and components call context actions (`markAttendance`, `addHomework`, etc.) — they never import from `supabase.js` directly. The one intentional exception is `TeacherMarks.jsx`, which calls `upsertMarks`, `publishMarks`, and `getMarksByClass` directly because mark entry/publishing is not managed by DataContext.
 
 ### Styling
 
@@ -67,10 +68,22 @@ No CSS framework. All styles use inline styles + a global utility class system d
 
 Migrations live in `supabase/migrations/` — run them in order (001→004) in the Supabase SQL Editor for a fresh project. Key tables: `schools`, `profiles` (auth users), `classes`, `teacher_classes`, `students`, `parent_students`, `attendance`, `marks`, `homework`, `announcements`, `behaviour_logs`, `notices`, `message_threads`, `messages`, `timetable`, `calendar_events`, `fee_structures`, `student_fees`.
 
+### Admin provisioning flow
+
+New users are never created via direct SQL. The flow:
+- **Adding a student**: INSERT into `students` first (get `student_id`), then call `invite-user` Edge Function with `role: 'parent'` + `student_id`. The function creates the auth user and links them via `parent_students`.
+- **Adding a teacher**: call `invite-user` with `role: 'teacher'` + `class_id` + `subject`. The function creates the auth user and inserts into `teacher_classes`.
+- **Bulk CSV import**: `AdminUsers.jsx` iterates rows sequentially (not in parallel) and calls `inviteUser()` per row to respect Edge Function rate limits.
+- **Teacher multi-class assignment**: use `getTeacherAssignments`, `addTeacherAssignment`, `removeTeacherAssignment` from `supabase.js` — these operate directly on `teacher_classes`.
+
+### Marks publish/draft pattern
+
+`marks` rows have a `published` boolean. Teachers save drafts (`published: false`, invisible to parents). `publishMarks(classId, subject, examType)` flips all matching rows to `published: true`. `getMarksByStudent` always filters `eq('published', true)` — parents only ever see published marks.
+
 ### Edge Functions
 
 Four Supabase Edge Functions in `supabase/functions/`:
-- `invite-user` — called by admin to create new auth users
+- `invite-user` — called by admin to create new auth users (validates caller is admin of the same school)
 - `send-notification` — sends FCM push to school users
 - `daily-report` — cron job (weekdays 10am) generating attendance summaries
 - `absence-alert` — database webhook triggered on attendance INSERT/UPDATE
