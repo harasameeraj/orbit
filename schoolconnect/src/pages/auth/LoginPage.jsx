@@ -27,13 +27,7 @@ export default function LoginPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    const user = await login(email, password)
-    if (user) {
-      const role = user.user_metadata?.role || 'parent'
-      if (role === 'admin') navigate('/admin')
-      else if (role === 'teacher') navigate('/teacher')
-      else navigate('/parent')
-    }
+    await login(email, password)
   }
 
   const fillDemo = (d) => { setEmail(d.email); setPassword(d.password) }

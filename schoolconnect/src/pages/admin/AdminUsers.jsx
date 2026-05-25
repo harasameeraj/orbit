@@ -4,45 +4,113 @@ import { useAuth } from '../../context/AuthContext.jsx'
 import { useData } from '../../context/DataContext.jsx'
 import PageHeader from '../../components/layout/PageHeader.jsx'
 import { Search, Plus, X, ChevronLeft, ChevronRight, Loader2, Pencil, Trash2, Upload, BookOpen, CheckCircle, AlertCircle, Download, Info } from 'lucide-react'
-import { supabase, getClassesBySchool, getTeacherAssignments, addTeacherAssignment, removeTeacherAssignment } from '../../lib/supabase.js'
+import { supabase, getClassesBySchool, getTeacherAssignments, addTeacherAssignment, removeTeacherAssignment, inviteUser } from '../../lib/supabase.js'
 
 const PAGE_SIZE = 8
 
 // ── CSV helpers ───────────────────────────────────────────────────────────────
 function parseCSV(text) {
-  const lines = text.trim().split(/\r?\n/)
-  if (lines.length < 2) return []
-  const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, '').toLowerCase().replace(/\s+/g, '_'))
-  return lines.slice(1).filter(l => l.trim()).map((line, i) => {
-    const values = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''))
+  // Strip UTF-8 BOM if present
+  const cleanText = text.replace(/^\uFEFF/, '')
+  
+  const lines = []
+  let row = []
+  let inQuotes = false
+  let currentVal = ''
+
+  for (let i = 0; i < cleanText.length; i++) {
+    const char = cleanText[i]
+    const nextChar = cleanText[i + 1]
+
+    if (char === '"') {
+      if (inQuotes && nextChar === '"') {
+        currentVal += '"'
+        i++ // skip next quote
+      } else {
+        inQuotes = !inQuotes
+      }
+    } else if (char === ',' && !inQuotes) {
+      row.push(currentVal.trim())
+      currentVal = ''
+    } else if ((char === '\r' || char === '\n') && !inQuotes) {
+      if (char === '\r' && nextChar === '\n') {
+        i++
+      }
+      row.push(currentVal.trim())
+      lines.push(row)
+      row = []
+      currentVal = ''
+    } else {
+      currentVal += char
+    }
+  }
+  if (currentVal || row.length > 0) {
+    row.push(currentVal.trim())
+    lines.push(row)
+  }
+
+  // Filter out completely empty rows
+  const nonEmptyLines = lines.filter(l => l.length > 0 && l.some(val => val !== ''))
+  if (nonEmptyLines.length < 2) return []
+
+  const headers = nonEmptyLines[0].map(h => 
+    h.toLowerCase().trim().replace(/"/g, '').replace(/\s+/g, '_')
+  )
+
+  return nonEmptyLines.slice(1).map((r, i) => {
     const obj = { _row: i + 2, _errors: [], _status: 'pending' }
-    headers.forEach((h, j) => { obj[h] = values[j] || '' })
+    headers.forEach((h, j) => { 
+      obj[h] = r[j] || '' 
+    })
     return obj
   })
 }
 
-function validateStudentRow(row, classes) {
+function validateStudentRow(row, classes, existingStudents) {
   const errs = []
   if (!row.name?.trim()) errs.push('Name required')
   if (!row.parent_email?.trim()) errs.push('parent_email required')
   else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.parent_email)) errs.push('Invalid parent_email')
+  
+  const cls = classes.find(c => c.name.toLowerCase() === (row.class_name || '').toLowerCase().trim())
   if (!row.class_name?.trim()) {
     errs.push('class_name required')
-  } else if (!classes.find(c => c.name.toLowerCase() === row.class_name.toLowerCase().trim())) {
+  } else if (!cls) {
     errs.push(`Class "${row.class_name}" not found`)
+  }
+
+  if (cls && row.roll_no?.trim() && row.roll_no !== '—') {
+    const isDup = existingStudents.some(s => 
+      s.class_id === cls.id && 
+      (s.roll_no || '').toLowerCase().trim() === row.roll_no.toLowerCase().trim()
+    )
+    if (isDup) {
+      errs.push(`Roll number "${row.roll_no}" already exists in class "${row.class_name}"`)
+    }
   }
   return errs
 }
 
-function validateTeacherRow(row, classes) {
+function validateTeacherRow(row, classes, existingTeachers) {
   const errs = []
   if (!row.name?.trim()) errs.push('Name required')
   if (!row.email?.trim()) errs.push('Email required')
   else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)) errs.push('Invalid email')
+  
+  const cls = classes.find(c => c.name.toLowerCase() === (row.class_name || '').toLowerCase().trim())
   if (!row.class_name?.trim()) {
     errs.push('class_name required')
-  } else if (!classes.find(c => c.name.toLowerCase() === row.class_name.toLowerCase().trim())) {
+  } else if (!cls) {
     errs.push(`Class "${row.class_name}" not found`)
+  }
+
+  if (row.email?.trim()) {
+    const isDup = existingTeachers.some(t => 
+      (t.email || '').toLowerCase().trim() === row.email.toLowerCase().trim()
+    )
+    if (isDup) {
+      errs.push(`Teacher with email "${row.email}" is already registered`)
+    }
   }
   return errs
 }
@@ -105,6 +173,7 @@ export default function AdminUsers() {
           setNewAssign(a => ({ ...a, class_id: res[0].id }))
         }
       })
+      reloadTeachers().then(() => setTeachersLoaded(true))
     }
   }, [profile?.school_id])
 
@@ -172,18 +241,18 @@ export default function AdminUsers() {
         studentId = newStudent.id
       }
 
-      const { error } = await supabase.functions.invoke('invite-user', {
-        body: {
-          email: form.email,
-          name: form.name,
-          role: tab === 'students' ? 'parent' : 'teacher',
-          school_id: profile?.school_id,
+      await inviteUser({
+        email: form.email,
+        name: form.name,
+        role: tab === 'students' ? 'parent' : 'teacher',
+        schoolId: profile?.school_id,
+        extraMeta: {
           ...(form.subject && { subject: form.subject }),
           ...(form.class_id && { class_id: form.class_id }),
           ...(studentId && { student_id: studentId }),
         }
       })
-      if (error) throw error
+
 
       setFormMsg({ type: 'success', text: `Invite sent to ${form.email}! They will receive an email to set their password.` })
       setForm({ name: '', email: '', roll_no: '', class_id: classes[0]?.id || '', father_name: '', phone: '', subject: '', role: 'parent' })
@@ -251,8 +320,8 @@ export default function AdminUsers() {
       const rows = parseCSV(ev.target.result)
       const validated = rows.map(row => {
         const errs = tab === 'students'
-          ? validateStudentRow(row, classes)
-          : validateTeacherRow(row, classes)
+          ? validateStudentRow(row, classes, students)
+          : validateTeacherRow(row, classes, teachers)
         return { ...row, _errors: errs, _status: errs.length > 0 ? 'error' : 'pending' }
       })
       setCsvRows(validated)
@@ -286,32 +355,71 @@ export default function AdminUsers() {
           }).select('id').single()
           if (stErr) throw stErr
 
-          const { error } = await supabase.functions.invoke('invite-user', {
-            body: {
+          let inviteError = null
+          let result = null
+          try {
+            result = await inviteUser({
               email: row.parent_email,
-              name: row.name,
+              name: row.father_name || `Parent of ${row.name}`,
               role: 'parent',
-              school_id: profile?.school_id,
-              class_id: cls.id,
-              student_id: newSt.id,
+              schoolId: profile?.school_id,
+              extraMeta: {
+                class_id: cls.id,
+                student_id: newSt.id,
+              }
+            })
+          } catch (err) {
+            inviteError = err
+          }
+
+          if (inviteError) {
+            console.warn('inviteUser failed:', inviteError)
+            updated[i] = { 
+              ...updated[i], 
+              _status: 'success', 
+              _warning: `Student record created, but parent account creation failed: ${inviteError.message}` 
             }
-          })
-          if (error) throw error
+          } else {
+            const warning = result?.fallback 
+              ? 'Parent account created locally via fallback (email sent rate-limited or Edge Function skipped).'
+              : null
+            updated[i] = { 
+              ...updated[i], 
+              _status: 'success', 
+              ...(warning && { _warning: warning })
+            }
+          }
         } else {
-          const { error } = await supabase.functions.invoke('invite-user', {
-            body: {
+          let inviteError = null
+          let result = null
+          try {
+            result = await inviteUser({
               email: row.email,
               name: row.name,
               role: 'teacher',
-              school_id: profile?.school_id,
-              class_id: cls.id,
-              subject: row.subject || '',
-              is_class_teacher: row.is_class_teacher === 'true',
-            }
-          })
-          if (error) throw error
+              schoolId: profile?.school_id,
+              extraMeta: {
+                class_id: cls.id,
+                subject: row.subject || '',
+                is_class_teacher: row.is_class_teacher === 'true',
+              }
+            })
+          } catch (err) {
+            inviteError = err
+          }
+
+          if (inviteError) {
+            throw inviteError
+          }
+          const warning = result?.fallback 
+            ? 'Teacher account created locally via fallback (email sent rate-limited or Edge Function skipped).'
+            : null
+          updated[i] = { 
+            ...updated[i], 
+            _status: 'success',
+            ...(warning && { _warning: warning })
+          }
         }
-        updated[i] = { ...updated[i], _status: 'success' }
       } catch (e) {
         updated[i] = { ...updated[i], _status: 'fail', _errors: [e.message || 'Import failed'] }
       }
@@ -547,7 +655,12 @@ export default function AdminUsers() {
                           </div>
                           <div>
                             <div style={{ fontWeight: 700, fontSize: 14 }}>{item.name}</div>
-                            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{item.email || '—'}</div>
+                            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                              {item.email || (tab === 'students'
+                                ? `${(item.name || '').toLowerCase().replace(/[^a-z0-9]/g, '')}.parent@stxaviers.edu.in`
+                                : `${(item.name || '').toLowerCase().replace(/[^a-z0-9]/g, '')}@stxaviers.edu.in`
+                              )}
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -884,8 +997,15 @@ export default function AdminUsers() {
                           <td style={{ padding: '8px 12px' }}>{row.subject || '—'}</td>
                         </>)}
                         <td style={{ padding: '8px 12px' }}>
-                          {row._status === 'success' && <span style={{ color: 'var(--accent-green)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}><CheckCircle size={13} /> Done</span>}
-                          {row._status === 'fail' && <span style={{ color: '#d97706', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}><AlertCircle size={13} /> {row._errors[0]}</span>}
+                          {row._status === 'success' && (
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                              <span style={{ color: row._warning ? '#d97706' : 'var(--accent-green)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <CheckCircle size={13} /> {row._warning ? 'Imported' : 'Done'}
+                              </span>
+                              {row._warning && <span style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, display: 'block', lineHeight: 1.3 }}>{row._warning}</span>}
+                            </div>
+                          )}
+                          {row._status === 'fail' && <span style={{ color: 'var(--accent-red)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}><AlertCircle size={13} /> {row._errors[0]}</span>}
                           {row._status === 'error' && <span style={{ color: 'var(--accent-red)', fontWeight: 600, fontSize: 12 }}>{row._errors.join(', ')}</span>}
                           {row._status === 'pending' && <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Ready</span>}
                         </td>

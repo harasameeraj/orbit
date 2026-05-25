@@ -1,6 +1,4 @@
-[project]
-organization_id = "your-org-id"
-project_id = "your-project-id"
+# Supabase CLI Config
 
 [api]
 enabled = true
@@ -32,7 +30,11 @@ site_url = "http://localhost:5173"
 additional_redirect_urls = ["https://your-production-domain.com"]
 jwt_expiry = 3600
 enable_signup = false          # Only admins invite users — no self-signup
-email_confirm_required = true
+
+[auth.email]
+enable_confirmations = true
+
+
 
 [functions.daily-report]
 verify_jwt = false             # Called by cron, no user JWT

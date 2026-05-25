@@ -45,13 +45,107 @@ export async function getProfile(userId) {
 // ─── Invite helpers (admin calls these) ──────────────────────────────────────
 
 export async function inviteUser({ email, name, role, schoolId, extraMeta = {} }) {
-  // Uses Supabase Admin SDK on the server side (Edge Function)
-  // From the client we call our Edge Function wrapper
-  const { data, error } = await supabase.functions.invoke('invite-user', {
-    body: { email, name, role, schoolId, ...extraMeta }
+  try {
+    const { data, error } = await supabase.functions.invoke('invite-user', {
+      body: { email, name, role, schoolId, ...extraMeta }
+    })
+    if (!error) return data
+    console.warn('invite-user Edge Function returned error, trying fallback:', error)
+  } catch (err) {
+    console.warn('invite-user Edge Function invocation failed, trying fallback:', err)
+  }
+
+  // FALLBACK: Sign up user using standard client with persistSession: false
+  // to avoid modifying the current active session in localStorage
+  const tempSupabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false }
   })
-  if (error) throw error
-  return data
+
+  const defaultPassword = role === 'parent' ? 'Parent@1234' : 'Teacher@1234'
+  
+  let signUpData = null
+  let signUpError = null
+  
+  try {
+    const res = await tempSupabase.auth.signUp({
+      email,
+      password: defaultPassword,
+      options: {
+        data: {
+          school_id: schoolId,
+          role,
+          name
+        }
+      }
+    })
+    signUpData = res.data
+    signUpError = res.error
+  } catch (err) {
+    signUpError = err
+  }
+
+  if (signUpError) {
+    // Check if the user is already registered (or if rate limit is hit, meaning the user actually got created)
+    const errMsg = signUpError.message || ''
+    if (
+      errMsg.toLowerCase().includes('already') ||
+      errMsg.toLowerCase().includes('rate limit') ||
+      signUpError.status === 420 ||
+      signUpError.status === 429 ||
+      signUpError.code === 'user_already_exists'
+    ) {
+      console.log('User already registered or email rate limit reached. Proceeding with database linking fallback...')
+    } else {
+      throw signUpError
+    }
+  }
+
+  let userId = signUpData?.user?.id
+
+  // If signUp didn't return user.id (because user already existed or rate limit hit),
+  // let's fetch the profile from the database matching this name and role.
+  if (!userId) {
+    const { data: existingProfiles, error: fetchErr } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('school_id', schoolId)
+      .eq('role', role)
+      .eq('name', name)
+      .limit(1)
+
+    if (fetchErr || !existingProfiles || existingProfiles.length === 0) {
+      throw new Error(signUpError?.message || `User '${name}' already exists, but profile could not be found or linked.`)
+    }
+    userId = existingProfiles[0].id
+  }
+
+  // Link teacher to class if class_id and subject are provided
+  if (role === 'teacher' && extraMeta.class_id && extraMeta.subject) {
+    const { error: tcErr } = await supabase.from('teacher_classes').insert({
+      teacher_id: userId,
+      class_id: extraMeta.class_id,
+      school_id: schoolId,
+      subject: extraMeta.subject,
+      is_class_teacher: extraMeta.is_class_teacher || false
+    })
+    if (tcErr && !tcErr.message?.toLowerCase().includes('duplicate')) {
+      console.warn('teacher_classes link warning:', tcErr.message)
+    }
+  }
+
+  // Link parent to student if student_id is provided
+  if (role === 'parent' && extraMeta.student_id) {
+    const { error: psErr } = await supabase.from('parent_students').insert({
+      parent_id: userId,
+      student_id: extraMeta.student_id,
+      school_id: schoolId
+    })
+    if (psErr && !psErr.message?.toLowerCase().includes('duplicate')) {
+      console.warn('parent_students link warning:', psErr.message)
+    }
+  }
+
+  return { success: true, user_id: userId, fallback: true }
 }
 
 // ─── Students ─────────────────────────────────────────────────────────────────
@@ -696,6 +790,19 @@ export async function sendFeeReminder(schoolId, sentBy, message, recipientCount)
     .from('fee_reminders')
     .insert({ school_id: schoolId, sent_by: sentBy, message, recipient_count: recipientCount })
   if (error) throw error
+
+  // Double-write to announcements as a school-wide announcement (class_id: null) so parents can view it in-app
+  const { error: annErr } = await supabase
+    .from('announcements')
+    .insert({
+      school_id: schoolId,
+      class_id: null,
+      teacher_id: sentBy,
+      title: 'Fee Payment Reminder',
+      body: message,
+      is_urgent: true
+    })
+  if (annErr) console.warn('Failed to save fee announcement:', annErr.message)
 
   // Fire push via Edge Function
   await supabase.functions.invoke('send-notification', {

@@ -12,6 +12,7 @@ import {
   getTimetable,
 } from '../lib/supabase.js'
 import { supabase } from '../lib/supabase.js'
+import { showInAppNotification } from '../lib/firebase.js'
 
 const DataContext = createContext(null)
 
@@ -51,6 +52,79 @@ export function DataProvider({ children }) {
       }
     }
   }, [])
+
+  useEffect(() => {
+    if (!schoolId) return
+
+    // 1. Subscribe to announcements
+    const annChannel = supabase
+      .channel('realtime:announcements')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'announcements',
+        filter: `school_id=eq.${schoolId}`
+      }, (payload) => {
+        const newAnn = payload.new
+        // Check relevance
+        if (profile?.role === 'parent') {
+          const firstStudent = students[0]
+          if (newAnn.class_id && firstStudent && newAnn.class_id !== firstStudent.class_id) {
+            return
+          }
+        } else if (profile?.role === 'teacher') {
+          if (newAnn.class_id && newAnn.class_id !== classId) {
+            return
+          }
+        }
+
+        // Fetch sender profile name
+        supabase.from('profiles').select('name').eq('id', newAnn.teacher_id).single().then(({ data }) => {
+          const record = { ...newAnn, profiles: { name: data?.name || 'School Administration' } }
+          setAnnouncements(prev => {
+            if (prev.some(a => a.id === record.id)) return prev
+            return [record, ...prev]
+          })
+          showInAppNotification(record.title, record.body)
+        })
+      })
+      .subscribe()
+
+    // 2. Subscribe to notices
+    const noticeChannel = supabase
+      .channel('realtime:notices')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'notices',
+        filter: `school_id=eq.${schoolId}`
+      }, (payload) => {
+        if (payload.eventType === 'INSERT') {
+          if (payload.new.is_visible) {
+            setNotices(prev => [payload.new, ...prev])
+            showInAppNotification(payload.new.title, payload.new.body)
+          }
+        } else if (payload.eventType === 'UPDATE') {
+          setNotices(prev => {
+            if (!payload.new.is_visible) {
+              return prev.filter(n => n.id !== payload.new.id)
+            }
+            if (prev.some(n => n.id === payload.new.id)) {
+              return prev.map(n => n.id === payload.new.id ? payload.new : n)
+            }
+            return [payload.new, ...prev]
+          })
+        } else if (payload.eventType === 'DELETE') {
+          setNotices(prev => prev.filter(n => n.id !== payload.old.id))
+        }
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(annChannel)
+      supabase.removeChannel(noticeChannel)
+    }
+  }, [schoolId, profile?.role, classId, students])
 
   async function loadInitialData() {
     if (!schoolId) return

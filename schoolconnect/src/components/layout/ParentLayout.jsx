@@ -1,12 +1,13 @@
 import { Outlet } from 'react-router-dom'
 import Sidebar from './Sidebar.jsx'
-import { LayoutDashboard, CheckSquare, BarChart2, MessageCircle, User } from 'lucide-react'
+import { LayoutDashboard, CheckSquare, BarChart2, MessageCircle, User, CreditCard } from 'lucide-react'
 
 const LINKS = [
   { to: '/parent', label: 'Dashboard', Icon: LayoutDashboard },
   { to: '/parent/attendance', label: 'Attendance', Icon: CheckSquare },
   { to: '/parent/marks', label: 'Marks & Grades', Icon: BarChart2 },
   { to: '/parent/chat', label: 'Messages', Icon: MessageCircle },
+  { to: '/parent/fees', label: 'Fees & Payment', Icon: CreditCard },
   { to: '/parent/profile', label: 'Profile', Icon: User },
 ]
 

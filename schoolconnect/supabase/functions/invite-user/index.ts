@@ -30,6 +30,17 @@ const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
 })
 
 serve(async (req) => {
+  // Handle CORS
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', {
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+        'Access-Control-Allow-Methods': 'POST, GET, OPTIONS'
+      }
+    })
+  }
+
   // Verify caller is an authenticated admin
   const authHeader = req.headers.get('Authorization') || ''
   const userClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_ANON_KEY')!, {
@@ -37,7 +48,7 @@ serve(async (req) => {
   })
   const { data: { user }, error: authErr } = await userClient.auth.getUser()
   if (authErr || !user) {
-    return new Response('Unauthorized', { status: 401 })
+    return new Response('Unauthorized', { status: 401, headers: { 'Access-Control-Allow-Origin': '*' } })
   }
 
   // Check caller is admin
@@ -47,75 +58,117 @@ serve(async (req) => {
     .eq('id', user.id)
     .single()
   if (callerProfile?.role !== 'admin') {
-    return new Response('Forbidden — admin only', { status: 403 })
+    return new Response('Forbidden — admin only', { status: 403, headers: { 'Access-Control-Allow-Origin': '*' } })
   }
 
   const body = await req.json()
   const { email, name, role, school_id, class_id, subject, student_id } = body
 
   if (!email || !name || !role || !school_id) {
-    return new Response('Missing required fields', { status: 400 })
+    return new Response('Missing required fields', { status: 400, headers: { 'Access-Control-Allow-Origin': '*' } })
   }
 
   // Ensure the school_id matches the admin's school
   if (school_id !== callerProfile.school_id) {
-    return new Response('Forbidden — wrong school', { status: 403 })
+    return new Response('Forbidden — wrong school', { status: 403, headers: { 'Access-Control-Allow-Origin': '*' } })
   }
 
   try {
-    // 1. Create user via Admin SDK — sends magic-link invite email
-    const { data: newUser, error: createErr } = await adminClient.auth.admin.inviteUserByEmail(
-      email,
-      {
-        data: {
+    let newUserId = null
+
+    // Check if the user already exists in auth
+    const { data: userList, error: listErr } = await adminClient.auth.admin.listUsers()
+    if (listErr) throw listErr
+
+    const existingUser = userList.users.find((u) => u.email?.toLowerCase() === email.toLowerCase())
+
+    if (existingUser) {
+      newUserId = existingUser.id
+      console.log(`User already exists with ID ${newUserId}. Linking instead of creating.`)
+      
+      // Update metadata if needed
+      await adminClient.auth.admin.updateUserById(newUserId, {
+        user_metadata: {
           role,
           school_id,
           name,
-          // Extra metadata stored for use after signup
           ...(class_id && { class_id }),
           ...(subject  && { subject }),
-        },
-        redirectTo: `${Deno.env.get('SITE_URL') || 'http://localhost:5173'}/login`,
-      }
-    )
-    if (createErr) throw createErr
-
-    const newUserId = newUser.user.id
+        }
+      })
+    } else {
+      // 1. Create user via Admin SDK — sends magic-link invite email
+      const { data: newUser, error: createErr } = await adminClient.auth.admin.inviteUserByEmail(
+        email,
+        {
+          data: {
+            role,
+            school_id,
+            name,
+            ...(class_id && { class_id }),
+            ...(subject  && { subject }),
+          },
+          redirectTo: `${Deno.env.get('SITE_URL') || 'http://localhost:5173'}/login`,
+        }
+      )
+      if (createErr) throw createErr
+      newUserId = newUser.user.id
+    }
 
     // 2. For teachers: link to class after profile is created
     if (role === 'teacher' && class_id && subject) {
-      // Profile is created by trigger — wait briefly then link
-      await new Promise(r => setTimeout(r, 500))
-      const { error: tcErr } = await adminClient.from('teacher_classes').insert({
-        teacher_id: newUserId,
-        class_id,
-        school_id,
-        subject,
-        is_class_teacher: false,
-      })
-      if (tcErr) console.warn('teacher_classes link warning:', tcErr.message)
+      await new Promise(r => setTimeout(r, 600))
+      // Verify if link already exists
+      const { data: existingLink } = await adminClient
+        .from('teacher_classes')
+        .select('id')
+        .eq('teacher_id', newUserId)
+        .eq('class_id', class_id)
+        .eq('subject', subject)
+        .maybeSingle()
+
+      if (!existingLink) {
+        const { error: tcErr } = await adminClient.from('teacher_classes').insert({
+          teacher_id: newUserId,
+          class_id,
+          school_id,
+          subject,
+          is_class_teacher: false,
+        })
+        if (tcErr) console.warn('teacher_classes link warning:', tcErr.message)
+      }
     }
 
     // 3. For parents: link to student
     if (role === 'parent' && student_id) {
-      await new Promise(r => setTimeout(r, 500))
-      const { error: psErr } = await adminClient.from('parent_students').insert({
-        parent_id: newUserId,
-        student_id,
-        school_id,
-      })
-      if (psErr) console.warn('parent_students link warning:', psErr.message)
+      await new Promise(r => setTimeout(r, 600))
+      // Verify if link already exists
+      const { data: existingLink } = await adminClient
+        .from('parent_students')
+        .select('id')
+        .eq('parent_id', newUserId)
+        .eq('student_id', student_id)
+        .maybeSingle()
+
+      if (!existingLink) {
+        const { error: psErr } = await adminClient.from('parent_students').insert({
+          parent_id: newUserId,
+          student_id,
+          school_id,
+        })
+        if (psErr) console.warn('parent_students link warning:', psErr.message)
+      }
     }
 
     return new Response(
       JSON.stringify({ success: true, user_id: newUserId }),
-      { headers: { 'Content-Type': 'application/json' } }
+      { headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
     )
   } catch (err) {
     console.error('invite-user error:', err)
     return new Response(
       JSON.stringify({ error: err.message }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
+      { status: 500, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
     )
   }
 })

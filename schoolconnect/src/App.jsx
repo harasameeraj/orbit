@@ -20,6 +20,7 @@ import ParentAttendance from './pages/parent/ParentAttendance.jsx'
 import ParentMarks from './pages/parent/ParentMarks.jsx'
 import ParentProfile from './pages/parent/ParentProfile.jsx'
 import ParentChat from './pages/parent/ParentChat.jsx'
+import ParentFees from './pages/parent/ParentFees.jsx'
 
 import AdminLayout from './components/layout/AdminLayout.jsx'
 import AdminDashboard from './pages/admin/AdminDashboard.jsx'
@@ -80,6 +81,7 @@ export default function App() {
               <Route path="marks" element={<ParentMarks />} />
               <Route path="profile" element={<ParentProfile />} />
               <Route path="chat" element={<ParentChat />} />
+              <Route path="fees" element={<ParentFees />} />
             </Route>
 
             <Route path="/admin" element={<ProtectedRoute role="admin"><AdminLayout /></ProtectedRoute>}>
