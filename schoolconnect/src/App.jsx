@@ -4,6 +4,7 @@ import { DataProvider } from './context/DataContext.jsx'
 import NotificationToast from './components/shared/NotificationToast.jsx'
 import ErrorBoundary from './components/shared/ErrorBoundary.jsx'
 
+import SchoolCodePage from './pages/auth/SchoolCodePage.jsx'
 import LoginPage from './pages/auth/LoginPage.jsx'
 import SetPasswordPage from './pages/auth/SetPasswordPage.jsx'
 
@@ -64,9 +65,9 @@ export default function App() {
           <NotificationToast />
           <ErrorBoundary>
           <Routes>
+            <Route path="/" element={<SchoolCodePage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/set-password" element={<SetPasswordPage />} />
-            <Route path="/" element={<RoleRedirect />} />
 
             <Route path="/teacher" element={<ProtectedRoute role="teacher"><TeacherLayout /></ProtectedRoute>}>
               <Route index element={<TeacherDashboard />} />

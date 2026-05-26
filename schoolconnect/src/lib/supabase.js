@@ -15,6 +15,18 @@ export const supabase = createClient(
   SUPABASE_ANON_KEY || 'placeholder'
 )
 
+// ─── School lookup (used by school code screen — no auth required) ────────────
+
+export async function getSchoolByCode(code) {
+  const { data, error } = await supabase
+    .from('schools')
+    .select('id, name, code, brand_color, logo_url')
+    .eq('code', code.toUpperCase().trim())
+    .single()
+  if (error) return null
+  return data
+}
+
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
 export async function signIn(email, password) {
