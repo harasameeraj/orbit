@@ -5,6 +5,7 @@ import NotificationToast from './components/shared/NotificationToast.jsx'
 import ErrorBoundary from './components/shared/ErrorBoundary.jsx'
 
 import LoginPage from './pages/auth/LoginPage.jsx'
+import SetPasswordPage from './pages/auth/SetPasswordPage.jsx'
 
 import TeacherLayout from './components/layout/TeacherLayout.jsx'
 import TeacherDashboard from './pages/teacher/TeacherDashboard.jsx'
@@ -64,6 +65,7 @@ export default function App() {
           <ErrorBoundary>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/set-password" element={<SetPasswordPage />} />
             <Route path="/" element={<RoleRedirect />} />
 
             <Route path="/teacher" element={<ProtectedRoute role="teacher"><TeacherLayout /></ProtectedRoute>}>

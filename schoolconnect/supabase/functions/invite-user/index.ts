@@ -84,9 +84,9 @@ serve(async (req) => {
 
     if (existingUser) {
       newUserId = existingUser.id
-      console.log(`User already exists with ID ${newUserId}. Linking instead of creating.`)
-      
-      // Update metadata if needed
+      console.log(`User already exists with ID ${newUserId}. Linking and re-sending invite.`)
+
+      // Update metadata
       await adminClient.auth.admin.updateUserById(newUserId, {
         user_metadata: {
           role,
@@ -96,8 +96,22 @@ serve(async (req) => {
           ...(subject  && { subject }),
         }
       })
+
+      // Re-send invite email so the parent gets their login link
+      const siteUrl = Deno.env.get('SITE_URL') || 'http://localhost:5174'
+      try {
+        await adminClient.auth.admin.inviteUserByEmail(email, {
+          data: { role, school_id, name },
+          redirectTo: `${siteUrl}/set-password`,
+        })
+        console.log(`Re-invite email sent to ${email}`)
+      } catch (reinviteErr) {
+        // Non-fatal: user already exists, they can use password reset
+        console.warn(`Re-invite failed for existing user ${email}:`, reinviteErr.message)
+      }
     } else {
       // 1. Create user via Admin SDK — sends magic-link invite email
+      const siteUrl = Deno.env.get('SITE_URL') || 'http://localhost:5174'
       const { data: newUser, error: createErr } = await adminClient.auth.admin.inviteUserByEmail(
         email,
         {
@@ -108,7 +122,7 @@ serve(async (req) => {
             ...(class_id && { class_id }),
             ...(subject  && { subject }),
           },
-          redirectTo: `${Deno.env.get('SITE_URL') || 'http://localhost:5173'}/login`,
+          redirectTo: `${siteUrl}/set-password`,
         }
       )
       if (createErr) throw createErr

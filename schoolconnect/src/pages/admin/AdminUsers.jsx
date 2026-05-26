@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import * as XLSX from 'xlsx'
 import { createPortal } from 'react-dom'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { useData } from '../../context/DataContext.jsx'
@@ -12,7 +13,16 @@ const PAGE_SIZE = 8
 function parseCSV(text) {
   // Strip UTF-8 BOM if present
   const cleanText = text.replace(/^\uFEFF/, '')
-  
+
+  // Auto-detect delimiter: tab, semicolon, or comma
+  const firstLine = cleanText.split(/\r?\n/)[0] || ''
+  const tabCount = (firstLine.match(/\t/g) || []).length
+  const semicolonCount = (firstLine.match(/;/g) || []).length
+  const commaCount = (firstLine.match(/,/g) || []).length
+  const delimiter = tabCount > commaCount && tabCount > semicolonCount ? '\t'
+    : semicolonCount > commaCount ? ';'
+    : ','
+
   const lines = []
   let row = []
   let inQuotes = false
@@ -29,7 +39,7 @@ function parseCSV(text) {
       } else {
         inQuotes = !inQuotes
       }
-    } else if (char === ',' && !inQuotes) {
+    } else if (char === delimiter && !inQuotes) {
       row.push(currentVal.trim())
       currentVal = ''
     } else if ((char === '\r' || char === '\n') && !inQuotes) {
@@ -315,9 +325,28 @@ export default function AdminUsers() {
   const handleCsvFile = (e) => {
     const file = e.target.files?.[0]
     if (!file) return
+    const isXlsx = file.name.match(/\.xlsx?$/i)
     const reader = new FileReader()
     reader.onload = (ev) => {
-      const rows = parseCSV(ev.target.result)
+      let rows
+      if (isXlsx) {
+        const wb = XLSX.read(ev.target.result, { type: 'array' })
+        const ws = wb.Sheets[wb.SheetNames[0]]
+        const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
+        if (data.length < 2) { rows = [] }
+        else {
+          const headers = data[0].map(h => String(h).toLowerCase().trim().replace(/\s+/g, '_'))
+          rows = data.slice(1)
+            .filter(r => r.some(v => String(v).trim() !== ''))
+            .map((r, i) => {
+              const obj = { _row: i + 2, _errors: [], _status: 'pending' }
+              headers.forEach((h, j) => { obj[h] = r[j] != null ? String(r[j]).trim() : '' })
+              return obj
+            })
+        }
+      } else {
+        rows = parseCSV(ev.target.result)
+      }
       const validated = rows.map(row => {
         const errs = tab === 'students'
           ? validateStudentRow(row, classes, students)
@@ -328,7 +357,8 @@ export default function AdminUsers() {
       setCsvProgress(0)
       setShowCsvPreview(true)
     }
-    reader.readAsText(file)
+    if (isXlsx) reader.readAsArrayBuffer(file)
+    else reader.readAsText(file)
     e.target.value = ''
   }
 
@@ -380,8 +410,8 @@ export default function AdminUsers() {
               _warning: `Student record created, but parent account creation failed: ${inviteError.message}` 
             }
           } else {
-            const warning = result?.fallback 
-              ? 'Parent account created locally via fallback (email sent rate-limited or Edge Function skipped).'
+            const warning = result?.fallback
+              ? `Parent account created. Initial password: Parent@1234`
               : null
             updated[i] = { 
               ...updated[i], 
@@ -554,7 +584,7 @@ export default function AdminUsers() {
                 <button className="btn btn-ghost btn-sm" onClick={() => setShowImportGuide(true)}>
                   <Upload size={14} /> Import CSV
                 </button>
-                <input ref={csvFileRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={handleCsvFile} />
+                <input ref={csvFileRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={handleCsvFile} />
               </>
             )}
             <button className="btn btn-primary btn-sm" onClick={() => {
@@ -929,7 +959,7 @@ export default function AdminUsers() {
 
         {/* ── CSV Preview Modal ───────────────────────────────────────────────── */}
         {showCsvPreview && (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }} onClick={() => !csvImporting && setShowCsvPreview(false)}>
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }} onClick={() => { if (!csvImporting) { setShowCsvPreview(false); setCsvRows([]) } }}>
             <div className="card-lg" style={{ padding: 32, width: 800, background: 'var(--surface)', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
                 <div>
@@ -1025,7 +1055,7 @@ export default function AdminUsers() {
                   {csvImporting ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Upload size={16} />}
                   {csvImporting ? 'Importing…' : `Import ${csvRows.filter(r => r._status === 'pending').length} ${tab}`}
                 </button>
-                <button className="btn btn-ghost btn-lg" onClick={() => setShowCsvPreview(false)} disabled={csvImporting}>Close</button>
+                <button className="btn btn-ghost btn-lg" onClick={() => { setShowCsvPreview(false); setCsvRows([]) }} disabled={csvImporting}>Close</button>
               </div>
             </div>
           </div>

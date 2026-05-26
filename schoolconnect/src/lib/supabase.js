@@ -45,13 +45,16 @@ export async function getProfile(userId) {
 // ─── Invite helpers (admin calls these) ──────────────────────────────────────
 
 export async function inviteUser({ email, name, role, schoolId, extraMeta = {} }) {
+  let edgeFnErrorMsg = null
   try {
     const { data, error } = await supabase.functions.invoke('invite-user', {
-      body: { email, name, role, schoolId, ...extraMeta }
+      body: { email, name, role, school_id: schoolId, ...extraMeta }
     })
     if (!error) return data
+    edgeFnErrorMsg = error?.message || JSON.stringify(error)
     console.warn('invite-user Edge Function returned error, trying fallback:', error)
   } catch (err) {
+    edgeFnErrorMsg = err?.message || String(err)
     console.warn('invite-user Edge Function invocation failed, trying fallback:', err)
   }
 
@@ -114,7 +117,15 @@ export async function inviteUser({ email, name, role, schoolId, extraMeta = {} }
       .limit(1)
 
     if (fetchErr || !existingProfiles || existingProfiles.length === 0) {
-      throw new Error(signUpError?.message || `User '${name}' already exists, but profile could not be found or linked.`)
+      // User exists in auth but no profile yet — they're pending email confirmation.
+      // Don't throw: student record is already created. Return a warning so the
+      // import row shows as success with a note instead of failing entirely.
+      return {
+        success: true,
+        fallback: true,
+        pendingConfirmation: true,
+        warning: `Parent account already exists but is pending email confirmation. Ask them to check their inbox or resend the invite from the Users table.`
+      }
     }
     userId = existingProfiles[0].id
   }
@@ -145,7 +156,7 @@ export async function inviteUser({ email, name, role, schoolId, extraMeta = {} }
     }
   }
 
-  return { success: true, user_id: userId, fallback: true }
+  return { success: true, user_id: userId, fallback: true, edgeFnError: edgeFnErrorMsg }
 }
 
 // ─── Students ─────────────────────────────────────────────────────────────────
