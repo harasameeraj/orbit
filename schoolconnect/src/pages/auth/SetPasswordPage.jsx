@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase.js'
 
+// Grab the user's email from the current session so we can re-sign-in after password set
+let _pendingEmail = null
+
 export default function SetPasswordPage() {
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -12,15 +15,18 @@ export default function SetPasswordPage() {
 
   useEffect(() => {
     // Supabase automatically processes the #access_token hash and fires onAuthStateChange.
-    // We just need to wait for the session to be established.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if ((event === 'SIGNED_IN' || event === 'USER_UPDATED') && session) {
+        _pendingEmail = session.user?.email || null
         setSessionReady(true)
       }
     })
     // Also check if session already exists (in case the event already fired)
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) setSessionReady(true)
+      if (session) {
+        _pendingEmail = session.user?.email || null
+        setSessionReady(true)
+      }
     })
     return () => subscription.unsubscribe()
   }, [])
@@ -34,8 +40,23 @@ export default function SetPasswordPage() {
     const { error: updateErr } = await supabase.auth.updateUser({ password })
     if (updateErr) { setError(updateErr.message); setLoading(false); return }
 
-    // Sign out so the parent lands on a clean login screen
+    // Sign out the invite session, then sign back in with the new password
+    // so the user lands directly on their dashboard without a second login step
     await supabase.auth.signOut()
+
+    if (_pendingEmail) {
+      const { error: signInErr } = await supabase.auth.signInWithPassword({
+        email: _pendingEmail,
+        password,
+      })
+      if (!signInErr) {
+        // AuthContext will pick up the new session and redirect to the right dashboard
+        navigate('/', { replace: true })
+        return
+      }
+    }
+
+    // Fallback: just go to login with a success message
     navigate('/login', { replace: true, state: { message: 'Password set! Please log in with your new credentials.' } })
   }
 
