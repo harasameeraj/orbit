@@ -82,9 +82,11 @@ serve(async (req) => {
 
     const existingUser = userList.users.find((u) => u.email?.toLowerCase() === email.toLowerCase())
 
+    const siteUrl = Deno.env.get('SITE_URL') || 'http://localhost:5174'
+
     if (existingUser) {
       newUserId = existingUser.id
-      console.log(`User already exists with ID ${newUserId}. Linking and re-sending invite.`)
+      console.log(`User already exists with ID ${newUserId}. Linking and sending password reset.`)
 
       // Update metadata
       await adminClient.auth.admin.updateUserById(newUserId, {
@@ -97,21 +99,21 @@ serve(async (req) => {
         }
       })
 
-      // Re-send invite email so the parent gets their login link
-      const siteUrl = Deno.env.get('SITE_URL') || 'http://localhost:5174'
-      try {
-        await adminClient.auth.admin.inviteUserByEmail(email, {
-          data: { role, school_id, name },
-          redirectTo: `${siteUrl}/set-password`,
-        })
-        console.log(`Re-invite email sent to ${email}`)
-      } catch (reinviteErr) {
-        // Non-fatal: user already exists, they can use password reset
-        console.warn(`Re-invite failed for existing user ${email}:`, reinviteErr.message)
+      // For existing confirmed users, inviteUserByEmail is rejected by Supabase.
+      // Send a password reset email instead — works with the same /set-password page.
+      const anonClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_ANON_KEY')!, {
+        auth: { autoRefreshToken: false, persistSession: false }
+      })
+      const { error: resetErr } = await anonClient.auth.resetPasswordForEmail(email, {
+        redirectTo: `${siteUrl}/set-password`,
+      })
+      if (resetErr) {
+        console.warn(`Password reset email failed for ${email}:`, resetErr.message)
+      } else {
+        console.log(`Password reset email sent to existing user ${email}`)
       }
     } else {
       // 1. Create user via Admin SDK — sends magic-link invite email
-      const siteUrl = Deno.env.get('SITE_URL') || 'http://localhost:5174'
       const { data: newUser, error: createErr } = await adminClient.auth.admin.inviteUserByEmail(
         email,
         {
