@@ -14,9 +14,9 @@ const STATUS_META = {
 }
 
 export default function ParentAttendance() {
-  const { attendance, students } = useData()
+  const { attendance, students, activeStudent } = useData()
 
-  const student   = students?.[0]
+  const student   = activeStudent || students?.[0]
   const studentId = student?.id
   const records   = (studentId ? attendance[studentId] : null) || []
 

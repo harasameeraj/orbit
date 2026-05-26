@@ -9,8 +9,8 @@ const TEACHER_COLORS = ['#ffa94d', '#69db7c', '#74c0fc', '#da77f2', '#ff6b6b', '
 
 export function ParentProfile() {
   const { user, logout, profile } = useAuth()
-  const { students, reloadData } = useData()
-  const student = students[0] || {}
+  const { students, activeStudent, reloadData } = useData()
+  const student = activeStudent || students[0] || {}
 
   const [photoUrl, setPhotoUrl] = useState(student.photo_url || null)
   const [uploading, setUploading] = useState(false)

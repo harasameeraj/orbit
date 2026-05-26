@@ -19,17 +19,19 @@ const DataContext = createContext(null)
 export function DataProvider({ children }) {
   const { user, profile } = useAuth()
 
-  const [students,      setStudents]      = useState([])
-  const [attendance,    setAttendance]    = useState({})
-  const [homework,      setHomework]      = useState([])
-  const [announcements, setAnnouncements] = useState([])
-  const [behaviourLogs, setBehaviourLogs] = useState([])
-  const [notices,       setNotices]       = useState([])
-  const [eventPhotos,   setEventPhotos]   = useState([])
-  const [timetable,     setTimetable]     = useState({})
-  const [marks,         setMarks]         = useState({})
-  const [messages,      setMessages]      = useState([])
-  const [loadingData,   setLoadingData]   = useState(false)
+  const [students,       setStudents]       = useState([])
+  const [activeStudent,  setActiveStudent]  = useState(null)
+  const [attendance,     setAttendance]     = useState({})
+  const [homework,       setHomework]       = useState([])
+  const [announcements,  setAnnouncements]  = useState([])
+  const [behaviourLogs,  setBehaviourLogs]  = useState([])
+  const [notices,        setNotices]        = useState([])
+  const [eventPhotos,    setEventPhotos]    = useState([])
+  const [timetable,      setTimetable]      = useState({})
+  const [marks,          setMarks]          = useState({})
+  const [messages,       setMessages]       = useState([])
+  const [loadingData,    setLoadingData]    = useState(false)
+  const [switchingChild, setSwitchingChild] = useState(false)
 
   const schoolId = profile?.school_id
   const activeChannelRef = useRef(null)
@@ -150,13 +152,14 @@ export function DataProvider({ children }) {
       } else if (profile.role === 'parent') {
         const { data: links } = await supabase
           .from('parent_students')
-          .select('student_id, students(*)')
+          .select('student_id, students(*, classes(name))')
           .eq('parent_id', user.id)
 
         const studs = (links || []).map(l => l.students).filter(Boolean)
         setStudents(studs)
 
         if (studs[0]) {
+          setActiveStudent(studs[0])
           await loadParentData(studs[0].id, studs[0].class_id)
         }
 
@@ -309,10 +312,19 @@ export function DataProvider({ children }) {
     return thread
   }
 
+  const switchStudent = async (student) => {
+    if (!student || student.id === activeStudent?.id) return
+    setSwitchingChild(true)
+    setActiveStudent(student)
+    setMessages([])
+    await loadParentData(student.id, student.class_id)
+    setSwitchingChild(false)
+  }
+
   return (
     <DataContext.Provider value={{
-      students, attendance, homework, announcements, behaviourLogs,
-      notices, eventPhotos, timetable, marks, messages, loadingData,
+      students, activeStudent, attendance, homework, announcements, behaviourLogs,
+      notices, eventPhotos, timetable, marks, messages, loadingData, switchingChild,
       classId, schoolId,
       markAttendance:   markAttendanceAction,
       addHomework:      addHomeworkAction,
@@ -323,6 +335,7 @@ export function DataProvider({ children }) {
       sendMessage:      sendMessageAction,
       loadMessages,
       reloadData:       loadInitialData,
+      switchStudent,
     }}>
       {children}
     </DataContext.Provider>

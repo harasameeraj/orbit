@@ -8,8 +8,8 @@ const EXAM_TYPES = ['Unit Test 1', 'Unit Test 2', 'Unit Test 3', 'Mid Term', 'Fi
 
 
 export default function ParentMarks() {
-  const { marks, students, attendance } = useData()
-  const student = students?.[0]
+  const { marks, students, activeStudent, attendance } = useData()
+  const student = activeStudent || students?.[0]
   const studentId = student?.id
   const studentName = student?.name || 'Student'
   const firstName = studentName.split(' ')[0]

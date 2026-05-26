@@ -5,10 +5,10 @@ import PageHeader from '../../components/layout/PageHeader.jsx'
 import { CheckCircle2, Star, BookOpen, Calendar, Megaphone, MessageCircle, XCircle, Clock } from 'lucide-react'
 
 export default function ParentDashboard() {
-  const { homework, announcements, behaviourLogs, attendance, marks, students } = useData()
+  const { homework, announcements, behaviourLogs, attendance, marks, students, activeStudent } = useData()
   const { user } = useAuth()
 
-  const student = students[0] || {}
+  const student = activeStudent || students[0] || {}
   const studentId = student.id
   const firstName = student.name?.split(' ')[0] || user?.email?.split('@')[0] || 'your child'
 

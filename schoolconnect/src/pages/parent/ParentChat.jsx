@@ -7,7 +7,7 @@ import { supabase } from '../../lib/supabase.js'
 
 export default function ParentChat() {
   const { user, profile } = useAuth()
-  const { students, messages, loadMessages, sendMessage } = useData()
+  const { students, activeStudent, messages, loadMessages, sendMessage } = useData()
   const [text, setText] = useState('')
   const [thread, setThread] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -20,8 +20,8 @@ export default function ParentChat() {
   const currentHour = new Date().getHours()
   const withinChatHours = currentHour >= chatHourStart && currentHour < chatHourEnd
 
-  // Get the student this parent is linked to
-  const student = students[0]
+  // Get the active student (respects child switcher)
+  const student = activeStudent || students[0]
 
   useEffect(() => {
     if (!user || !student || !profile) return
