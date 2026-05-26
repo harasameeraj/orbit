@@ -99,19 +99,9 @@ serve(async (req) => {
         }
       })
 
-      // For existing confirmed users, inviteUserByEmail is rejected by Supabase.
-      // Send a password reset email instead — works with the same /set-password page.
-      const anonClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_ANON_KEY')!, {
-        auth: { autoRefreshToken: false, persistSession: false }
-      })
-      const { error: resetErr } = await anonClient.auth.resetPasswordForEmail(email, {
-        redirectTo: `${siteUrl}/set-password`,
-      })
-      if (resetErr) {
-        console.warn(`Password reset email failed for ${email}:`, resetErr.message)
-      } else {
-        console.log(`Password reset email sent to existing user ${email}`)
-      }
+      // Existing parent — just link them to the new student, no email needed.
+      // They already have login access from their first invite.
+      console.log(`Existing parent ${email} linked to new student. No email sent.`)
     } else {
       // 1. Create user via Admin SDK — sends magic-link invite email
       const { data: newUser, error: createErr } = await adminClient.auth.admin.inviteUserByEmail(
@@ -177,7 +167,7 @@ serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ success: true, user_id: newUserId }),
+      JSON.stringify({ success: true, user_id: newUserId, existing: !!existingUser }),
       { headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
     )
   } catch (err) {

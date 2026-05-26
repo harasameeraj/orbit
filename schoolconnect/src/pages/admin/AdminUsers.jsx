@@ -251,7 +251,7 @@ export default function AdminUsers() {
         studentId = newStudent.id
       }
 
-      await inviteUser({
+      const result = await inviteUser({
         email: form.email,
         name: form.name,
         role: tab === 'students' ? 'parent' : 'teacher',
@@ -263,8 +263,10 @@ export default function AdminUsers() {
         }
       })
 
-
-      setFormMsg({ type: 'success', text: `Invite sent to ${form.email}! They will receive an email to set their password.` })
+      const msg = result?.existing
+        ? `${form.email} already has an account — student linked to their existing login. No email sent.`
+        : `Invite sent to ${form.email}! They will receive an email to set their password.`
+      setFormMsg({ type: 'success', text: msg })
       setForm({ name: '', email: '', roll_no: '', class_id: classes[0]?.id || '', father_name: '', phone: '', subject: '', role: 'parent' })
       if (tab === 'teachers') { await reloadTeachers(); setTeachersLoaded(true) }
       else reloadData()
@@ -404,18 +406,20 @@ export default function AdminUsers() {
 
           if (inviteError) {
             console.warn('inviteUser failed:', inviteError)
-            updated[i] = { 
-              ...updated[i], 
-              _status: 'success', 
-              _warning: `Student record created, but parent account creation failed: ${inviteError.message}` 
+            updated[i] = {
+              ...updated[i],
+              _status: 'success',
+              _warning: `Student record created, but parent account creation failed: ${inviteError.message}`
             }
           } else {
-            const warning = result?.fallback
+            const warning = result?.existing
+              ? `Parent already has an account — student linked to their existing login. No email sent.`
+              : result?.fallback
               ? `Parent account created. Initial password: Parent@1234`
               : null
-            updated[i] = { 
-              ...updated[i], 
-              _status: 'success', 
+            updated[i] = {
+              ...updated[i],
+              _status: 'success',
               ...(warning && { _warning: warning })
             }
           }
