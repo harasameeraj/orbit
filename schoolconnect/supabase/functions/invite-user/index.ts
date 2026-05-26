@@ -76,6 +76,15 @@ serve(async (req) => {
   try {
     let newUserId = null
 
+    // Look up school code + name for the email template
+    const { data: schoolData } = await adminClient
+      .from('schools')
+      .select('code, name')
+      .eq('id', school_id)
+      .single()
+    const schoolCode = schoolData?.code || ''
+    const schoolName = schoolData?.name || ''
+
     // Check if the user already exists in auth
     const { data: userList, error: listErr } = await adminClient.auth.admin.listUsers()
     if (listErr) throw listErr
@@ -93,6 +102,8 @@ serve(async (req) => {
         user_metadata: {
           role,
           school_id,
+          school_code: schoolCode,
+          school_name: schoolName,
           name,
           ...(class_id && { class_id }),
           ...(subject  && { subject }),
@@ -110,6 +121,8 @@ serve(async (req) => {
           data: {
             role,
             school_id,
+            school_code: schoolCode,
+            school_name: schoolName,
             name,
             ...(class_id && { class_id }),
             ...(subject  && { subject }),
