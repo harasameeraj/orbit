@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase.js'
-import { getSchoolByCode, storeSchool } from './SchoolCodePage.jsx'
+import { getSchoolByCode } from '../../lib/supabase.js'
+import { storeSchool } from './SchoolCodePage.jsx'
 
 export default function SetPasswordPage() {
   const [password, setPassword] = useState('')
