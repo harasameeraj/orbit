@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase.js'
+import { getSchoolByCode, storeSchool } from './SchoolCodePage.jsx'
 
 export default function SetPasswordPage() {
   const [password, setPassword] = useState('')
@@ -12,6 +13,15 @@ export default function SetPasswordPage() {
   const navigate = useNavigate()
 
   useEffect(() => {
+    // Auto-store school from ?school= query param so user never has to type the code
+    const searchParams = new URLSearchParams(window.location.search)
+    const schoolCode = searchParams.get('school')
+    if (schoolCode) {
+      getSchoolByCode(schoolCode).then(school => {
+        if (school) storeSchool(school)
+      })
+    }
+
     // Parse tokens directly from the URL hash (#access_token=...&refresh_token=...)
     const hash = window.location.hash.substring(1)
     const params = new URLSearchParams(hash)

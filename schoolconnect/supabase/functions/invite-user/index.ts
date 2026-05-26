@@ -127,7 +127,7 @@ serve(async (req) => {
             ...(class_id && { class_id }),
             ...(subject  && { subject }),
           },
-          redirectTo: `${siteUrl}/set-password`,
+          redirectTo: `${siteUrl}/set-password?school=${schoolCode}`,
         }
       )
       if (createErr) throw createErr
