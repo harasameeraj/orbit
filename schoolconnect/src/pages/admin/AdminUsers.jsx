@@ -87,6 +87,32 @@ function parseCSV(text) {
   })
 }
 
+function validateMegaRow(row, dbClasses, fileClassNames) {
+  const errs = []
+  const type = (row.type || '').toLowerCase().trim()
+  if (!type) { errs.push('type is required (class / student / teacher)'); return errs }
+  if (!['class', 'student', 'teacher'].includes(type)) {
+    errs.push(`Unknown type "${type}" — must be class, student, or teacher`); return errs
+  }
+  if (!row.name?.trim()) errs.push('name is required')
+  const classAvailable = (name) =>
+    findClass(dbClasses, name) || fileClassNames.some(n => normaliseClass(n) === normaliseClass(name))
+
+  if (type === 'teacher') {
+    if (!row.email?.trim()) errs.push('email is required for teachers')
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)) errs.push('Invalid email')
+    if (!row.class_name?.trim()) errs.push('class_name is required')
+    else if (!classAvailable(row.class_name)) errs.push(`Class "${row.class_name}" not found — include a class row in this file or create it first`)
+    if (!row.subject?.trim()) errs.push('subject is required for teachers')
+  } else if (type === 'student') {
+    if (!row.class_name?.trim()) errs.push('class_name is required')
+    else if (!classAvailable(row.class_name)) errs.push(`Class "${row.class_name}" not found — include a class row in this file or create it first`)
+    if (!row.parent_email?.trim()) errs.push('parent_email is required')
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.parent_email)) errs.push('Invalid parent_email')
+  }
+  return errs
+}
+
 function validateStudentRow(row, classes, existingStudents) {
   const errs = []
   if (!row.name?.trim()) errs.push('Name required')
@@ -183,6 +209,14 @@ export default function AdminUsers() {
   const [csvImporting, setCsvImporting] = useState(false)
   const [csvProgress, setCsvProgress] = useState(0)
   const csvFileRef = useRef(null)
+
+  // Mega import state
+  const [showMegaGuide, setShowMegaGuide] = useState(false)
+  const [megaRows, setMegaRows] = useState([])
+  const [showMegaPreview, setShowMegaPreview] = useState(false)
+  const [megaImporting, setMegaImporting] = useState(false)
+  const [megaProgress, setMegaProgress] = useState(0)
+  const megaFileRef = useRef(null)
 
   // Fetch classes list for school
   useEffect(() => {
@@ -481,6 +515,134 @@ export default function AdminUsers() {
     if (tab === 'teachers') { await reloadTeachers(); setTeachersLoaded(true) }
   }
 
+  // ── Mega Import ─────────────────────────────────────────────────────────────
+  const megaDownloadTemplate = () => {
+    const lines = [
+      'type,name,email,class_name,grade,section,roll_no,father_name,parent_email,parent_name,subject,is_class_teacher',
+      'class,Grade 10 A,,,10,A,,,,,,',
+      'class,Grade 10 B,,,10,B,,,,,,',
+      'teacher,Mr. Rajesh Iyer,rajesh@school.edu.in,Grade 10 A,,,,,,,Mathematics,true',
+      'teacher,Ms. Sunita Rao,sunita@school.edu.in,Grade 10 A,,,,,,,Science,false',
+      'teacher,Ms. Sunita Rao,sunita@school.edu.in,Grade 10 B,,,,,,,Science,false',
+      'student,Arjun Sharma,,Grade 10 A,,,01,Mr. Sunil Sharma,parent1@example.com,Mr. Sunil Sharma,,',
+      'student,Priya Patel,,Grade 10 A,,,02,,parent2@example.com,,,',
+    ]
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = 'mega_import_template.csv'
+    document.body.appendChild(a); a.click()
+    document.body.removeChild(a); URL.revokeObjectURL(url)
+  }
+
+  const handleMegaFile = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const isXlsx = file.name.match(/\.xlsx?$/i)
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      let rows
+      if (isXlsx) {
+        const wb = XLSX.read(ev.target.result, { type: 'array' })
+        const ws = wb.Sheets[wb.SheetNames[0]]
+        const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
+        if (data.length < 2) { rows = [] } else {
+          const headers = data[0].map(h => String(h).toLowerCase().trim().replace(/\s+/g, '_'))
+          rows = data.slice(1).filter(r => r.some(v => String(v).trim() !== '')).map((r, i) => {
+            const obj = { _row: i + 2, _errors: [], _status: 'pending' }
+            headers.forEach((h, j) => { obj[h] = r[j] != null ? String(r[j]).trim() : '' })
+            return obj
+          })
+        }
+      } else {
+        rows = parseCSV(ev.target.result)
+      }
+      const fileClassNames = rows
+        .filter(r => (r.type || '').toLowerCase().trim() === 'class' && r.name?.trim())
+        .map(r => r.name.trim())
+      const validated = rows.map(row => {
+        const errs = validateMegaRow(row, classes, fileClassNames)
+        return { ...row, _type: (row.type || '').toLowerCase().trim(), _errors: errs, _status: errs.length ? 'error' : 'pending' }
+      })
+      setMegaRows(validated); setMegaProgress(0); setShowMegaPreview(true)
+    }
+    if (isXlsx) reader.readAsArrayBuffer(file); else reader.readAsText(file)
+    e.target.value = ''
+  }
+
+  const handleMegaImport = async () => {
+    if (!megaRows.some(r => r._status === 'pending')) return
+    setMegaImporting(true); setMegaProgress(0)
+    const updated = [...megaRows]
+    let done = 0
+
+    // Build live class map (normalised name → class object)
+    const classMap = {}
+    classes.forEach(c => { classMap[normaliseClass(c.name)] = c })
+
+    // PASS 1 — classes
+    for (let i = 0; i < updated.length; i++) {
+      const row = updated[i]
+      if (row._type !== 'class' || row._status !== 'pending') continue
+      try {
+        const { data, error } = await supabase.from('classes').insert({
+          school_id: profile.school_id,
+          name: row.name.trim(),
+          grade: row.grade?.trim() || row.name.trim(),
+          section: row.section?.trim() || '',
+        }).select().single()
+        if (error) throw error
+        classMap[normaliseClass(data.name)] = data
+        updated[i] = { ...updated[i], _status: 'success' }
+      } catch (e) { updated[i] = { ...updated[i], _status: 'fail', _errors: [e.message] } }
+      done++; setMegaProgress(done); setMegaRows([...updated])
+    }
+
+    // PASS 2 — teachers
+    for (let i = 0; i < updated.length; i++) {
+      const row = updated[i]
+      if (row._type !== 'teacher' || row._status !== 'pending') continue
+      const cls = classMap[normaliseClass(row.class_name)]
+      try {
+        if (!cls) throw new Error(`Class "${row.class_name}" not found`)
+        await inviteUser({
+          email: row.email, name: row.name, role: 'teacher', schoolId: profile.school_id,
+          extraMeta: { class_id: cls.id, subject: row.subject || '', is_class_teacher: row.is_class_teacher === 'true' }
+        })
+        updated[i] = { ...updated[i], _status: 'success' }
+      } catch (e) { updated[i] = { ...updated[i], _status: 'fail', _errors: [e.message] } }
+      done++; setMegaProgress(done); setMegaRows([...updated])
+    }
+
+    // PASS 3 — students + parents
+    for (let i = 0; i < updated.length; i++) {
+      const row = updated[i]
+      if (row._type !== 'student' || row._status !== 'pending') continue
+      const cls = classMap[normaliseClass(row.class_name)]
+      try {
+        if (!cls) throw new Error(`Class "${row.class_name}" not found`)
+        const { data: newSt, error: stErr } = await supabase.from('students').insert({
+          school_id: profile.school_id, class_id: cls.id,
+          name: row.name.trim(), roll_no: row.roll_no?.trim() || '—', father_name: row.father_name?.trim() || '',
+        }).select('id').single()
+        if (stErr) throw stErr
+        await inviteUser({
+          email: row.parent_email, name: row.parent_name?.trim() || `Parent of ${row.name}`,
+          role: 'parent', schoolId: profile.school_id,
+          extraMeta: { class_id: cls.id, student_id: newSt.id }
+        })
+        updated[i] = { ...updated[i], _status: 'success' }
+      } catch (e) { updated[i] = { ...updated[i], _status: 'fail', _errors: [e.message] } }
+      done++; setMegaProgress(done); setMegaRows([...updated])
+    }
+
+    setMegaImporting(false)
+    reloadData()
+    await reloadTeachers(); setTeachersLoaded(true)
+    const freshClasses = await getClassesBySchool(profile.school_id)
+    setClasses(freshClasses || [])
+  }
+
   // ── Edit ────────────────────────────────────────────────────────────────────
   const openEdit = async (item) => {
     setEditMsg({ type: '', text: '' })
@@ -597,6 +759,10 @@ export default function AdminUsers() {
         subtitle="Manage students, teachers, classes and credentials."
         action={
           <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-sm" style={{ background: '#7c3aed', color: 'white', border: 'none', fontWeight: 700 }} onClick={() => setShowMegaGuide(true)}>
+              <Upload size={14} /> Mega Import
+            </button>
+            <input ref={megaFileRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={handleMegaFile} />
             {tab !== 'classes' && (
               <>
                 <button className="btn btn-ghost btn-sm" onClick={() => setShowImportGuide(true)}>
@@ -1186,6 +1352,187 @@ export default function AdminUsers() {
                   <button className="btn btn-ghost btn-full btn-lg" style={{ marginTop: 20 }} onClick={() => setEditItem(null)}>Close</button>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Mega Import Guide ───────────────────────────────────────────────── */}
+        {showMegaGuide && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }} onClick={() => setShowMegaGuide(false)}>
+            <div className="card-lg" style={{ padding: 32, width: 700, background: 'var(--surface)', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+                    <div style={{ background: '#7c3aed', borderRadius: 8, padding: '4px 10px', fontSize: 11, fontWeight: 800, color: 'white', textTransform: 'uppercase', letterSpacing: .5 }}>Mega Import</div>
+                    <h2 style={{ fontSize: 20, fontWeight: 800 }}>Import Everything at Once</h2>
+                  </div>
+                  <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>One CSV file creates classes, teachers, and students in a single upload.</p>
+                </div>
+                <button onClick={() => setShowMegaGuide(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><X size={20} /></button>
+              </div>
+
+              {/* How it works */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 24 }}>
+                {[
+                  { type: 'class', color: '#0891b2', bg: '#e0f2fe', label: 'type = class', fields: ['name (required)', 'grade (optional)', 'section (optional)'] },
+                  { type: 'teacher', color: '#7c3aed', bg: '#f3e8ff', label: 'type = teacher', fields: ['name (required)', 'email (required)', 'class_name (required)', 'subject (required)', 'is_class_teacher (true/false)'] },
+                  { type: 'student', color: '#16a34a', bg: '#dcfce7', label: 'type = student', fields: ['name (required)', 'class_name (required)', 'roll_no (optional)', 'father_name (optional)', 'parent_email (required)', 'parent_name (optional)'] },
+                ].map(({ type, color, bg, label, fields }) => (
+                  <div key={type} style={{ background: bg, borderRadius: 10, padding: '14px 16px', border: `1.5px solid ${color}30` }}>
+                    <div style={{ fontWeight: 800, fontSize: 13, color, marginBottom: 8, fontFamily: 'monospace' }}>{label}</div>
+                    {fields.map(f => <div key={f} style={{ fontSize: 12, color: '#374151', lineHeight: 1.8 }}>· {f}</div>)}
+                  </div>
+                ))}
+              </div>
+
+              {/* Processing order note */}
+              <div style={{ background: 'var(--surface-2)', borderRadius: 8, padding: '10px 14px', marginBottom: 20, fontSize: 13, color: 'var(--text-secondary)' }}>
+                <strong>Processing order:</strong> Rows are always processed <strong>classes first → teachers → students</strong>, regardless of the order in your file. A teacher or student row can reference a class defined anywhere in the same file.
+              </div>
+
+              {/* Column reference */}
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: .5, marginBottom: 10 }}>All columns (leave unused ones blank)</div>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ background: 'var(--surface-2)' }}>
+                      {['Column', 'Used by', 'Notes'].map(h => <th key={h} style={{ padding: '7px 12px', textAlign: 'left', fontWeight: 700, color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase' }}>{h}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      { col: 'type', by: 'all', note: 'class · teacher · student' },
+                      { col: 'name', by: 'all', note: 'Full name of the class, teacher, or student' },
+                      { col: 'email', by: 'teacher', note: 'Teacher login email — invite sent here' },
+                      { col: 'class_name', by: 'teacher · student', note: 'Must match a class name (case/spaces/dashes ignored)' },
+                      { col: 'grade', by: 'class', note: 'Optional — e.g. 10, KG, Year 7' },
+                      { col: 'section', by: 'class', note: 'Optional — e.g. A, Blue' },
+                      { col: 'roll_no', by: 'student', note: 'Any format your school uses — optional' },
+                      { col: 'father_name', by: 'student', note: "Optional — shown on student profile" },
+                      { col: 'parent_email', by: 'student', note: 'Parent login email — invite sent here' },
+                      { col: 'parent_name', by: 'student', note: 'Optional — used as display name for parent' },
+                      { col: 'subject', by: 'teacher', note: 'Subject taught — e.g. Mathematics, Science' },
+                      { col: 'is_class_teacher', by: 'teacher', note: 'true or false — marks as primary class teacher' },
+                    ].map(({ col, by, note }) => (
+                      <tr key={col} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={{ padding: '8px 12px' }}><code style={{ background: 'var(--surface-2)', padding: '2px 6px', borderRadius: 4, fontWeight: 700 }}>{col}</code></td>
+                        <td style={{ padding: '8px 12px', color: 'var(--text-muted)', fontSize: 11 }}>{by}</td>
+                        <td style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>{note}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Example */}
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: .5, marginBottom: 8 }}>Example CSV</div>
+                <pre style={{ background: 'var(--surface-2)', borderRadius: 8, padding: '12px 16px', fontSize: 11, overflowX: 'auto', lineHeight: 1.9, margin: 0 }}>{`type,name,email,class_name,grade,section,roll_no,father_name,parent_email,parent_name,subject,is_class_teacher
+class,Grade 10 A,,,10,A,,,,,,
+class,Grade 10 B,,,10,B,,,,,,
+teacher,Mr. Rajesh Iyer,rajesh@school.edu.in,Grade 10 A,,,,,,,Mathematics,true
+teacher,Ms. Sunita Rao,sunita@school.edu.in,Grade 10 A,,,,,,,Science,false
+teacher,Ms. Sunita Rao,sunita@school.edu.in,Grade 10 B,,,,,,,Science,false
+student,Arjun Sharma,,Grade 10 A,,,01,Mr. Sunil Sharma,parent1@example.com,Mr. Sunil Sharma,,
+student,Priya Patel,,Grade 10 A,,,02,,parent2@example.com,,,`}</pre>
+              </div>
+
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button className="btn btn-ghost btn-lg" style={{ flex: 1 }} onClick={megaDownloadTemplate}><Download size={16} /> Download Template</button>
+                <button className="btn btn-lg" style={{ flex: 2, background: '#7c3aed', color: 'white', border: 'none', fontWeight: 700 }}
+                  onClick={() => { setShowMegaGuide(false); megaFileRef.current?.click() }}>
+                  <Upload size={16} /> Choose File to Upload
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Mega Import Preview ─────────────────────────────────────────────── */}
+        {showMegaPreview && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }} onClick={() => { if (!megaImporting) { setShowMegaPreview(false); setMegaRows([]) } }}>
+            <div className="card-lg" style={{ padding: 32, width: 860, background: 'var(--surface)', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <div>
+                  <h2 style={{ fontSize: 20, fontWeight: 800, marginBottom: 4 }}>Mega Import Preview</h2>
+                  <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                    {megaRows.filter(r => r._type === 'class' && r._status === 'pending').length} classes ·{' '}
+                    {megaRows.filter(r => r._type === 'teacher' && r._status === 'pending').length} teachers ·{' '}
+                    {megaRows.filter(r => r._type === 'student' && r._status === 'pending').length} students ready ·{' '}
+                    {megaRows.filter(r => r._status === 'error').length} errors
+                  </p>
+                </div>
+                {!megaImporting && <button onClick={() => { setShowMegaPreview(false); setMegaRows([]) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><X size={20} /></button>}
+              </div>
+
+              {megaImporting && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: 13, fontWeight: 600 }}>
+                    <span>Importing…</span>
+                    <span>{megaProgress} / {megaRows.filter(r => r._status !== 'error').length}</span>
+                  </div>
+                  <div style={{ height: 8, background: 'var(--surface-2)', borderRadius: 99 }}>
+                    <div style={{ height: 8, background: '#7c3aed', borderRadius: 99, width: `${(megaProgress / Math.max(megaRows.filter(r => r._status !== 'error').length, 1)) * 100}%`, transition: 'width .3s' }} />
+                  </div>
+                </div>
+              )}
+
+              <div style={{ overflowX: 'auto', marginBottom: 20 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: 'var(--surface-2)' }}>
+                      {['Row', 'Type', 'Name', 'Class', 'Detail', 'Status'].map(h => (
+                        <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {megaRows.map((row, i) => {
+                      const TYPE_STYLE = {
+                        class:   { bg: '#e0f2fe', color: '#0891b2' },
+                        teacher: { bg: '#f3e8ff', color: '#7c3aed' },
+                        student: { bg: '#dcfce7', color: '#16a34a' },
+                      }
+                      const ts = TYPE_STYLE[row._type] || { bg: 'var(--surface-2)', color: 'var(--text-muted)' }
+                      const detail = row._type === 'teacher' ? `${row.subject || '—'}${row.is_class_teacher === 'true' ? ' · CT' : ''}`
+                        : row._type === 'student' ? (row.parent_email || '—')
+                        : (row.grade ? `Grade ${row.grade}` : '') + (row.section ? ` · ${row.section}` : '')
+                      return (
+                        <tr key={i} style={{
+                          borderBottom: '1px solid var(--border)',
+                          background: row._status === 'error' ? 'var(--accent-red-light)'
+                            : row._status === 'success' ? 'var(--accent-green-light)'
+                            : row._status === 'fail' ? '#fff8e1' : 'transparent'
+                        }}>
+                          <td style={{ padding: '8px 12px', color: 'var(--text-muted)' }}>{row._row}</td>
+                          <td style={{ padding: '8px 12px' }}>
+                            <span style={{ background: ts.bg, color: ts.color, padding: '2px 8px', borderRadius: 99, fontWeight: 700, fontSize: 11, textTransform: 'uppercase' }}>{row._type || '?'}</span>
+                          </td>
+                          <td style={{ padding: '8px 12px', fontWeight: 600 }}>{row.name || '—'}</td>
+                          <td style={{ padding: '8px 12px', color: 'var(--text-muted)' }}>{row.class_name || '—'}</td>
+                          <td style={{ padding: '8px 12px', color: 'var(--text-muted)', fontSize: 12 }}>{detail}</td>
+                          <td style={{ padding: '8px 12px' }}>
+                            {row._status === 'success' && <span style={{ color: 'var(--accent-green)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}><CheckCircle size={13} /> Done</span>}
+                            {row._status === 'fail'    && <span style={{ color: 'var(--accent-red)', fontWeight: 600, fontSize: 12 }}><AlertCircle size={13} /> {row._errors[0]}</span>}
+                            {row._status === 'error'   && <span style={{ color: 'var(--accent-red)', fontWeight: 600, fontSize: 12 }}>{row._errors.join(', ')}</span>}
+                            {row._status === 'pending' && <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Ready</span>}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button className="btn btn-lg" style={{ flex: 2, background: '#7c3aed', color: 'white', border: 'none', fontWeight: 700 }}
+                  onClick={handleMegaImport}
+                  disabled={megaImporting || !megaRows.some(r => r._status === 'pending')}>
+                  {megaImporting ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Upload size={16} />}
+                  {megaImporting ? 'Importing…' : `Import ${megaRows.filter(r => r._status === 'pending').length} rows`}
+                </button>
+                <button className="btn btn-ghost btn-lg" onClick={() => { setShowMegaPreview(false); setMegaRows([]) }} disabled={megaImporting}>Close</button>
+              </div>
             </div>
           </div>
         )}
