@@ -9,6 +9,17 @@ import { supabase, getClassesBySchool, getTeacherAssignments, addTeacherAssignme
 
 const PAGE_SIZE = 8
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+// Normalise a class name for fuzzy matching:
+// strips spaces, dashes, underscores and lowercases — so "10-B", "10B", "10 b" all match
+function normaliseClass(str) {
+  return (str || '').toLowerCase().replace(/[\s\-_]/g, '')
+}
+
+function findClass(classes, name) {
+  return classes.find(c => normaliseClass(c.name) === normaliseClass(name))
+}
+
 // ── CSV helpers ───────────────────────────────────────────────────────────────
 function parseCSV(text) {
   // Strip UTF-8 BOM if present
@@ -82,7 +93,7 @@ function validateStudentRow(row, classes, existingStudents) {
   if (!row.parent_email?.trim()) errs.push('parent_email required')
   else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.parent_email)) errs.push('Invalid parent_email')
   
-  const cls = classes.find(c => c.name.toLowerCase() === (row.class_name || '').toLowerCase().trim())
+  const cls = findClass(classes, row.class_name)
   if (!row.class_name?.trim()) {
     errs.push('class_name required')
   } else if (!cls) {
@@ -107,7 +118,7 @@ function validateTeacherRow(row, classes, existingTeachers) {
   if (!row.email?.trim()) errs.push('Email required')
   else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)) errs.push('Invalid email')
   
-  const cls = classes.find(c => c.name.toLowerCase() === (row.class_name || '').toLowerCase().trim())
+  const cls = findClass(classes, row.class_name)
   if (!row.class_name?.trim()) {
     errs.push('class_name required')
   } else if (!cls) {
@@ -378,7 +389,7 @@ export default function AdminUsers() {
     for (let i = 0; i < updated.length; i++) {
       const row = updated[i]
       if (row._status !== 'pending') continue
-      const cls = classes.find(c => c.name.toLowerCase() === (row.class_name || '').toLowerCase().trim())
+      const cls = findClass(classes, row.class_name)
       try {
         if (tab === 'students') {
           const { data: newSt, error: stErr } = await supabase.from('students').insert({
