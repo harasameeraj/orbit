@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+schoolconnect/node_modules/
+schoolconnect/mobile/node_modules/
+
+# Expo / Mobile build outputs
+schoolconnect/mobile/.expo/
+schoolconnect/mobile/dist/
+schoolconnect/mobile/web-build/
+
+# Vite / Web build outputs
+schoolconnect/dist/
+schoolconnect/.vite/
+schoolconnect/mobile/dist/
+
+# Local Env
+.env.local
+.env.*.local
