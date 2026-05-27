@@ -373,7 +373,7 @@ export async function getOrCreateThread(parentId, teacherId, studentId, schoolId
     .eq('parent_id', parentId)
     .eq('teacher_id', teacherId)
     .eq('student_id', studentId)
-    .single()
+    .maybeSingle()
 
   if (!data) {
     const { data: created, error } = await supabase

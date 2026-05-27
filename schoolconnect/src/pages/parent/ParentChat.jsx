@@ -48,7 +48,7 @@ export default function ParentChat() {
         .select('teacher_id, profiles(id, name)')
         .eq('class_id', student.class_id)
         .eq('is_class_teacher', true)
-        .single()
+        .maybeSingle()
 
       const teacherId = tc?.teacher_id
       if (!teacherId) {
