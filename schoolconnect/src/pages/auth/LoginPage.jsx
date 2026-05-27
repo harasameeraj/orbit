@@ -35,8 +35,9 @@ export default function LoginPage() {
 
   const brandColor = '#1a3a6b'
 
-  // Only show demo buttons for St. Xavier's
-  const isDemo = school?.code === 'STXAV'
+  // Show demo buttons for all 4 demo schools
+  const DEMO_CODES = ['STXAV', 'GRWDS', 'SUNRS', 'DPACD']
+  const isDemo = DEMO_CODES.includes(school?.code)
   const DEMO = [
     { label: 'Admin', email: 'admin@stxaviers.edu.in', password: 'Admin@1234', color: '#7c3aed' },
     { label: 'Teacher', email: 'teacher@stxaviers.edu.in', password: 'Teacher@1234', color: '#0891b2' },
