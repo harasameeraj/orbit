@@ -278,20 +278,23 @@ export default function AdminUsers() {
 
   // ── Add Class ──────────────────────────────────────────────────────────────
   const handleAddClass = async () => {
+    if (!classForm.name.trim()) {
+      setClassFormMsg({ type: 'error', text: 'Class name is required.' })
+      return
+    }
     setClassFormLoading(true)
     setClassFormMsg({ type: '', text: '' })
     try {
-      const displayName = classForm.name.trim() || `${classForm.grade}-${classForm.section}`
       const { data, error } = await supabase.from('classes').insert({
         school_id: profile?.school_id,
-        grade: classForm.grade,
-        section: classForm.section,
-        name: displayName,
+        grade: classForm.grade.trim() || classForm.name.trim(),
+        section: classForm.section.trim() || '',
+        name: classForm.name.trim(),
       }).select().single()
       if (error) throw error
       setClasses(prev => [...prev, data])
-      setClassFormMsg({ type: 'success', text: `Class "${displayName}" created!` })
-      setClassForm({ grade: '1', section: 'A', name: '' })
+      setClassFormMsg({ type: 'success', text: `Class "${classForm.name.trim()}" created!` })
+      setClassForm({ grade: '', section: '', name: '' })
       setTimeout(() => setShowAddClass(false), 1200)
     } catch (e) {
       setClassFormMsg({ type: 'error', text: e.message || 'Failed to create class.' })
@@ -753,25 +756,18 @@ export default function AdminUsers() {
                 </div>
               )}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 20 }}>
-                <div className="form-group">
-                  <label className="form-label">Grade *</label>
-                  <select className="form-input form-select" value={classForm.grade} onChange={e => setClassForm(f => ({ ...f, grade: e.target.value }))}>
-                    {Array.from({ length: 12 }, (_, i) => i + 1).map(g => (
-                      <option key={g} value={String(g)}>Grade {g}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Section *</label>
-                  <select className="form-input form-select" value={classForm.section} onChange={e => setClassForm(f => ({ ...f, section: e.target.value }))}>
-                    {['A', 'B', 'C', 'D', 'E', 'F'].map(s => (
-                      <option key={s} value={s}>Section {s}</option>
-                    ))}
-                  </select>
-                </div>
                 <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                  <label className="form-label">Display Name <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(optional — defaults to "{classForm.grade}-{classForm.section}")</span></label>
-                  <input className="form-input" placeholder={`${classForm.grade}-${classForm.section}`} value={classForm.name} onChange={e => setClassForm(f => ({ ...f, name: e.target.value }))} />
+                  <label className="form-label">Class Name *</label>
+                  <input className="form-input" placeholder="e.g. 10-A, Form 3B, Grade 5 Blue, KG-A…" value={classForm.name} onChange={e => setClassForm(f => ({ ...f, name: e.target.value }))} autoFocus />
+                  <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>This is what admins and teachers will see, and what the CSV class_name column must match.</p>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Grade / Year <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(optional)</span></label>
+                  <input className="form-input" placeholder="e.g. 10, KG, Form 3" value={classForm.grade} onChange={e => setClassForm(f => ({ ...f, grade: e.target.value }))} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Section <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(optional)</span></label>
+                  <input className="form-input" placeholder="e.g. A, B, Blue" value={classForm.section} onChange={e => setClassForm(f => ({ ...f, section: e.target.value }))} />
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 10 }}>
@@ -817,7 +813,7 @@ export default function AdminUsers() {
                 {tab === 'students' ? (<>
                   <div className="form-group">
                     <label className="form-label">Roll No</label>
-                    <input className="form-input" placeholder="e.g. 10A01" value={form.roll_no} onChange={e => setForm(f => ({ ...f, roll_no: e.target.value }))} />
+                    <input className="form-input" placeholder="Any format (e.g. 01, 2024-01)" value={form.roll_no} onChange={e => setForm(f => ({ ...f, roll_no: e.target.value }))} />
                   </div>
                   <div className="form-group">
                     <label className="form-label">Father's Name</label>
@@ -878,7 +874,7 @@ export default function AdminUsers() {
                   <tbody>
                     {(tab === 'students' ? [
                       { col: 'name',         req: true,  desc: 'Student full name' },
-                      { col: 'roll_no',      req: false, desc: 'Roll number (e.g. 10A01) — leave blank if not assigned' },
+                      { col: 'roll_no',      req: false, desc: 'Roll number in any format your school uses — leave blank if not assigned' },
                       { col: 'class_name',   req: true,  desc: 'Must exactly match a class name in this school (see Step 2)' },
                       { col: 'father_name',  req: false, desc: "Father's full name — used on student profile" },
                       { col: 'parent_email', req: true,  desc: 'Parent email — they will receive a login invite at this address' },
@@ -933,7 +929,7 @@ export default function AdminUsers() {
                 </div>
                 <pre style={{ background: 'var(--surface-2)', borderRadius: 8, padding: '12px 16px', fontSize: 12, overflowX: 'auto', lineHeight: 1.8, margin: 0, color: 'var(--text)' }}>
                   {tab === 'students'
-                    ? `name,roll_no,class_name,father_name,parent_email\nArjun Sharma,10A01,${classes[0]?.name || '10-A'},Mr. Sunil Sharma,parent@example.com`
+                    ? `name,roll_no,class_name,father_name,parent_email\nArjun Sharma,01,${classes[0]?.name || '10-A'},Mr. Sunil Sharma,parent@example.com`
                     : `name,email,class_name,subject,is_class_teacher\nMr. Rajesh Iyer,rajesh@school.edu.in,${classes[0]?.name || '10-A'},Mathematics,true`}
                 </pre>
               </div>
