@@ -304,12 +304,12 @@ export default function AdminUsers() {
 
   // ── CSV Import ──────────────────────────────────────────────────────────────
   const downloadTemplate = () => {
-    const classExample = classes[0]?.name || '10-A'
+    const classExample = classes[0]?.name || 'YourClassName'
     const lines = tab === 'students'
       ? [
           'name,roll_no,class_name,father_name,parent_email',
-          `Arjun Sharma,10A01,${classExample},Mr. Sunil Sharma,parent1@example.com`,
-          `Priya Patel,10A02,${classExample},Mr. Raj Patel,parent2@example.com`,
+          `Arjun Sharma,01,${classExample},Mr. Sunil Sharma,parent1@example.com`,
+          `Priya Patel,02,${classExample},Mr. Raj Patel,parent2@example.com`,
         ]
       : [
           'name,email,class_name,subject,is_class_teacher',
@@ -929,8 +929,8 @@ export default function AdminUsers() {
                 </div>
                 <pre style={{ background: 'var(--surface-2)', borderRadius: 8, padding: '12px 16px', fontSize: 12, overflowX: 'auto', lineHeight: 1.8, margin: 0, color: 'var(--text)' }}>
                   {tab === 'students'
-                    ? `name,roll_no,class_name,father_name,parent_email\nArjun Sharma,01,${classes[0]?.name || '10-A'},Mr. Sunil Sharma,parent@example.com`
-                    : `name,email,class_name,subject,is_class_teacher\nMr. Rajesh Iyer,rajesh@school.edu.in,${classes[0]?.name || '10-A'},Mathematics,true`}
+                    ? `name,roll_no,class_name,father_name,parent_email\nArjun Sharma,01,${classes[0]?.name || 'YourClassName'},Mr. Sunil Sharma,parent@example.com`
+                    : `name,email,class_name,subject,is_class_teacher\nMr. Rajesh Iyer,rajesh@school.edu.in,${classes[0]?.name || 'YourClassName'},Mathematics,true`}
                 </pre>
               </div>
 
