@@ -33,7 +33,7 @@ export default function LoginPage() {
     }
   }, [loading, user, profile, navigate])
 
-  const brandColor = school?.brand_color || '#1a3a6b'
+  const brandColor = '#1a3a6b'
 
   // Only show demo buttons for St. Xavier's
   const isDemo = school?.code === 'STXAV'
