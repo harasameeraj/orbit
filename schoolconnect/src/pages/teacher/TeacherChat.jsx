@@ -41,7 +41,7 @@ export default function TeacherChat() {
           student:students(id, name, roll_no)
         `)
         .eq('teacher_id', user.id)
-        .order('updated_at', { ascending: false })
+        .order('created_at', { ascending: false })
 
       if (error) throw error
       setThreads(data || [])
@@ -67,24 +67,31 @@ export default function TeacherChat() {
     const existing = threads.find(t => t.student_id === student.id)
     if (existing) { selectThread(existing); return }
 
-    // Find parent linked to this student
+    // Step 1: find parent_id linked to this student
     const { data: link } = await supabase
       .from('parent_students')
-      .select('parent_id, profiles(id, name)')
+      .select('parent_id')
       .eq('student_id', student.id)
       .maybeSingle()
 
-    if (!link?.profiles) {
+    if (!link?.parent_id) {
       alert(`No parent account linked to ${student.name} yet.`)
       return
     }
+
+    // Step 2: fetch the parent's profile separately
+    const { data: parentProfile } = await supabase
+      .from('profiles')
+      .select('id, name')
+      .eq('id', link.parent_id)
+      .maybeSingle()
 
     const thread = await loadMessages(link.parent_id, user.id, student.id)
     const newThread = {
       id: thread.id,
       parent_id: link.parent_id,
       student_id: student.id,
-      parent: link.profiles,
+      parent: parentProfile || { id: link.parent_id, name: 'Parent' },
       student: { id: student.id, name: student.name, roll_no: student.roll_no },
     }
     setThreads(prev => [newThread, ...prev.filter(t => t.id !== thread.id)])
