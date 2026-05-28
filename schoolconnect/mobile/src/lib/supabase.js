@@ -4,14 +4,13 @@ import { createClient } from '@supabase/supabase-js';
 // ─── Config ──────────────────────────────────────────────────────────────────
 // Reads from .env via react-native-dotenv or falls back to hardcoded values.
 // In production, these would come from app config / EAS secrets.
-const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
-const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
-
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://ouljlevztweykjoxjhal.supabase.co';
+const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_aiAkLg0JpW7r7OQiVfprxg_LEhi_HrA';
 
 // ─── Client with AsyncStorage for session persistence ────────────────────────
 export const supabase = createClient(
-  SUPABASE_URL || 'https://placeholder.supabase.co',
-  SUPABASE_ANON_KEY || 'placeholder',
+  SUPABASE_URL,
+  SUPABASE_ANON_KEY,
   {
     auth: {
       storage: AsyncStorage,
