@@ -344,18 +344,33 @@ export async function getTeachersByClass(classId) {
 export async function uploadHomeworkImage(localUri) {
   const ext = (localUri.split('.').pop() || 'jpg').toLowerCase().split('?')[0];
   const contentType = ext === 'png' ? 'image/png' : 'image/jpeg';
-  const filePath = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+  const filePath = `${Date.now()}.${ext}`;
 
-  const res = await fetch(localUri);
-  const arrayBuffer = await res.arrayBuffer();
+  // FormData + direct REST upload — most reliable approach for React Native/iOS
+  const formData = new FormData();
+  formData.append('file', { uri: localUri, name: `upload.${ext}`, type: contentType });
 
-  const { error } = await supabase.storage
-    .from('homework-images')
-    .upload(filePath, arrayBuffer, { contentType, upsert: false });
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData?.session?.access_token;
 
-  if (error) throw error;
+  const res = await fetch(
+    `${SUPABASE_URL}/storage/v1/object/homework-images/${filePath}`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        apikey: SUPABASE_ANON_KEY,
+      },
+      body: formData,
+    }
+  );
 
-  return supabase.storage.from('homework-images').getPublicUrl(filePath).data.publicUrl;
+  if (!res.ok) {
+    const msg = await res.text().catch(() => 'Upload failed');
+    throw new Error(msg);
+  }
+
+  return `${SUPABASE_URL}/storage/v1/object/public/homework-images/${filePath}`;
 }
 
 // ─── FCM Token ────────────────────────────────────────────────────────────────

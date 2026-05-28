@@ -183,6 +183,17 @@ export default function TeacherMarks({ route }) {
     }
   };
 
+  // Normalize DD-MM-YYYY or DD/MM/YYYY → YYYY-MM-DD
+  const normalizeDueDate = (input) => {
+    if (!input) return null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(input)) return input; // already correct
+    const parts = input.split(/[-\/]/);
+    if (parts.length === 3 && parts[0].length <= 2) {
+      return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+    }
+    return input;
+  };
+
   const handlePostHw = async () => {
     if (!hwTitle.trim()) {
       Alert.alert('Error', 'Please enter a homework title.');
@@ -190,15 +201,22 @@ export default function TeacherMarks({ route }) {
     }
     setHwLoading(true);
     try {
+      // Try image upload — if it fails, post homework without image
       let imageUrl = null;
       if (hwImage) {
-        imageUrl = await uploadHomeworkImage(hwImage);
+        try {
+          imageUrl = await uploadHomeworkImage(hwImage);
+        } catch (imgErr) {
+          console.warn('Image upload failed:', imgErr?.message);
+          // Continue posting without image
+        }
       }
+
       await addHomework({
         subject: hwSubject,
         title: hwTitle,
         description: hwDesc,
-        due_date: hwDue || null,
+        due_date: normalizeDueDate(hwDue),
         is_draft: false,
         ...(imageUrl ? { image_url: imageUrl } : {}),
       });
@@ -206,7 +224,10 @@ export default function TeacherMarks({ route }) {
       setHwDesc('');
       setHwDue('');
       setHwImage(null);
-      Alert.alert('Success', 'Homework posted! Parents in your class have been notified.');
+      const msg = hwImage && !imageUrl
+        ? 'Homework posted! (Image could not be uploaded — try again later)'
+        : 'Homework posted! Parents in your class have been notified.';
+      Alert.alert('Success', msg);
     } catch (e) {
       Alert.alert('Error', 'Failed: ' + e.message);
     }
