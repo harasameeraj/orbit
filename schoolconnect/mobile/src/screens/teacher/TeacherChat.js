@@ -23,7 +23,7 @@ import { Colors, Radius, Shadows } from '../../theme/colors';
 
 export default function TeacherChat() {
   const { user, profile } = useAuth();
-  const { students, messages, loadMessages, sendMessage } = useData();
+  const { students, messages, loadMessages, sendMessage, refreshMessages } = useData();
 
   const [threads, setThreads] = useState([]);
   const [selectedThread, setSelectedThread] = useState(null);
@@ -65,6 +65,13 @@ export default function TeacherChat() {
   useEffect(() => {
     loadTeacherThreads();
   }, [user]);
+
+  // Poll for new messages every 5 seconds when the chat modal is open
+  useEffect(() => {
+    if (!showChatModal) return;
+    const interval = setInterval(refreshMessages, 5000);
+    return () => clearInterval(interval);
+  }, [showChatModal]);
 
   const selectThread = async (thread) => {
     setSelectedThread(thread);
@@ -122,12 +129,14 @@ export default function TeacherChat() {
 
   const handleSend = async () => {
     if (!text.trim() || !selectedThread || sending) return;
+    const msgText = text.trim();
+    setText('');
     setSending(true);
     try {
-      await sendMessage(selectedThread.id, text);
-      setText('');
-    } catch (_e) {
-      // silent
+      await sendMessage(selectedThread.id, msgText);
+    } catch (e) {
+      setText(msgText); // restore if failed
+      Alert.alert('Could not send message', e?.message || 'Please try again.');
     }
     setSending(false);
   };
@@ -251,7 +260,8 @@ export default function TeacherChat() {
           <FlatList
             ref={flatListRef}
             data={messages}
-            keyExtractor={(item, idx) => item.id || String(idx)}
+            extraData={messages}
+            keyExtractor={(item, idx) => item.id ? String(item.id) : String(idx)}
             renderItem={renderMessage}
             contentContainerStyle={styles.messagesList}
             onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}

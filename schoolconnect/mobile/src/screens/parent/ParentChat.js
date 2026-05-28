@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
@@ -10,7 +10,7 @@ import { Colors, Radius } from '../../theme/colors';
 
 export default function ParentChat() {
   const { user, profile } = useAuth();
-  const { students, activeStudent, messages, loadMessages, sendMessage, schoolId } = useData();
+  const { students, activeStudent, messages, loadMessages, sendMessage, refreshMessages, schoolId } = useData();
   const [text, setText] = useState('');
   const [thread, setThread] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -19,21 +19,31 @@ export default function ParentChat() {
 
   const student = activeStudent || students[0];
 
+  // Re-init chat whenever the active student changes
   useEffect(() => {
     if (!user || !student || !profile) return;
+    setThread(null);
+    setLoading(true);
     initChat();
-  }, [user, student, profile]);
+  }, [student?.id]);
+
+  // Poll for new messages every 5 seconds as fallback for real-time
+  useEffect(() => {
+    if (!thread) return;
+    const interval = setInterval(refreshMessages, 5000);
+    return () => clearInterval(interval);
+  }, [thread?.id]);
 
   async function initChat() {
-    setLoading(true);
     try {
-      // Prefer the designated class teacher; fall back to any teacher in the class
+      // 1. Class teacher
       let { data: tc } = await supabase.from('teacher_classes')
         .select('teacher_id, profiles(id, name)')
         .eq('class_id', student.class_id)
         .eq('is_class_teacher', true)
         .maybeSingle();
 
+      // 2. Any teacher in the class
       if (!tc) {
         const { data: anyTc } = await supabase.from('teacher_classes')
           .select('teacher_id, profiles(id, name)')
@@ -42,37 +52,40 @@ export default function ParentChat() {
         tc = anyTc;
       }
 
-      // Last resort: any teacher in the school
+      // 3. Any teacher in the school
       if (!tc && schoolId) {
         const { data: schoolTeacher } = await supabase.from('profiles')
           .select('id, name')
           .eq('school_id', schoolId)
           .eq('role', 'teacher')
           .maybeSingle();
-        if (schoolTeacher) {
-          tc = { teacher_id: schoolTeacher.id, profiles: schoolTeacher };
-        }
+        if (schoolTeacher) tc = { teacher_id: schoolTeacher.id, profiles: schoolTeacher };
       }
 
       const teacherId = tc?.teacher_id;
-      if (!teacherId) { setLoading(false); return; }
+      if (!teacherId) {
+        setLoading(false);
+        return;
+      }
 
       const th = await loadMessages(user.id, teacherId, student.id);
       setThread({ ...th, teacher: tc?.profiles });
-    } catch (_e) {
-      // silent
+    } catch (e) {
+      console.error('ParentChat initChat error:', e?.message);
     }
     setLoading(false);
   }
 
   const handleSend = async () => {
     if (!text.trim() || !thread || sending) return;
+    const msgText = text.trim();
+    setText('');
     setSending(true);
     try {
-      await sendMessage(thread.id, text);
-      setText('');
-    } catch (_e) {
-      // silent
+      await sendMessage(thread.id, msgText);
+    } catch (e) {
+      setText(msgText); // restore if failed
+      Alert.alert('Could not send message', e?.message || 'Please try again.');
     }
     setSending(false);
   };
@@ -81,8 +94,9 @@ export default function ParentChat() {
 
   const renderMessage = ({ item: msg }) => {
     const isMe = msg.sender_id === user.id;
-    const time = msg.sent_at ? new Date(msg.sent_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '';
-
+    const time = msg.sent_at
+      ? new Date(msg.sent_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+      : '';
     return (
       <View style={[styles.msgRow, isMe && { justifyContent: 'flex-end' }]}>
         {!isMe && <Avatar name={teacherName} size={28} style={{ backgroundColor: Colors.brand }} />}
@@ -101,66 +115,83 @@ export default function ParentChat() {
     return <View style={styles.centered}><ActivityIndicator size="large" color={Colors.brand} /></View>;
   }
 
+  if (!thread) {
+    return (
+      <View style={styles.container}>
+        <ChildSwitcher />
+        <View style={styles.centered}>
+          <Ionicons name="person-outline" size={40} color={Colors.textMuted} style={{ marginBottom: 8, opacity: 0.4 }} />
+          <Text style={{ fontWeight: '600', color: Colors.textSecondary }}>No teacher assigned</Text>
+          <Text style={{ fontSize: 13, color: Colors.textMuted, textAlign: 'center', marginTop: 4 }}>
+            Contact the school to assign a class teacher.
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <ChildSwitcher />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={90}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Avatar name={teacherName} size={40} style={{ backgroundColor: Colors.brand }} />
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontWeight: '700', fontSize: 16, color: Colors.text }}>{teacherName}</Text>
-          <Text style={{ fontSize: 12, color: Colors.textMuted }}>Class Teacher</Text>
-        </View>
-      </View>
-
-      {/* Student context */}
-      {student && (
-        <View style={styles.contextBar}>
-          <Ionicons name="chatbubble-outline" size={14} color={Colors.textMuted} />
-          <Text style={{ fontSize: 13, color: Colors.textSecondary }}>Regarding: <Text style={{ fontWeight: '700' }}>{student.name}</Text></Text>
-        </View>
-      )}
-
-      {/* Messages */}
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        renderItem={renderMessage}
-        keyExtractor={(item, i) => item.id || String(i)}
-        contentContainerStyle={{ padding: 16, paddingBottom: 8, flexGrow: 1, justifyContent: messages.length === 0 ? 'center' : 'flex-end' }}
-        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-        ListEmptyComponent={
-          <View style={styles.centered}>
-            <Ionicons name="chatbubbles-outline" size={40} color={Colors.textMuted} style={{ marginBottom: 8, opacity: 0.4 }} />
-            <Text style={{ fontWeight: '600', color: Colors.textSecondary }}>No messages yet</Text>
-            <Text style={{ fontSize: 13, color: Colors.textMuted }}>Start the conversation</Text>
+        {/* Header */}
+        <View style={styles.header}>
+          <Avatar name={teacherName} size={40} style={{ backgroundColor: Colors.brand }} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontWeight: '700', fontSize: 16, color: Colors.text }}>{teacherName}</Text>
+            <Text style={{ fontSize: 12, color: Colors.textMuted }}>Class Teacher</Text>
           </View>
-        }
-      />
+        </View>
 
-      {/* Input */}
-      <View style={styles.inputBar}>
-        <TextInput
-          style={styles.textInput}
-          placeholder="Type a message..."
-          placeholderTextColor={Colors.textMuted}
-          value={text}
-          onChangeText={setText}
-          multiline
+        {/* Student context */}
+        {student && (
+          <View style={styles.contextBar}>
+            <Ionicons name="chatbubble-outline" size={14} color={Colors.textMuted} />
+            <Text style={{ fontSize: 13, color: Colors.textSecondary }}>
+              Regarding: <Text style={{ fontWeight: '700' }}>{student.name}</Text>
+            </Text>
+          </View>
+        )}
+
+        {/* Messages */}
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          extraData={messages}
+          renderItem={renderMessage}
+          keyExtractor={(item, i) => item.id ? String(item.id) : String(i)}
+          contentContainerStyle={{ padding: 16, paddingBottom: 8, flexGrow: 1, justifyContent: messages.length === 0 ? 'center' : 'flex-end' }}
+          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+          ListEmptyComponent={
+            <View style={styles.centered}>
+              <Ionicons name="chatbubbles-outline" size={40} color={Colors.textMuted} style={{ marginBottom: 8, opacity: 0.4 }} />
+              <Text style={{ fontWeight: '600', color: Colors.textSecondary }}>No messages yet</Text>
+              <Text style={{ fontSize: 13, color: Colors.textMuted }}>Start the conversation</Text>
+            </View>
+          }
         />
-        <TouchableOpacity
-          style={[styles.sendBtn, (!text.trim() || !thread || sending) && { opacity: 0.4 }]}
-          onPress={handleSend}
-          disabled={!text.trim() || !thread || sending}
-        >
-          {sending ? (
-            <ActivityIndicator size="small" color={Colors.white} />
-          ) : (
-            <Ionicons name="send" size={18} color={Colors.white} />
-          )}
-        </TouchableOpacity>
-      </View>
+
+        {/* Input */}
+        <View style={styles.inputBar}>
+          <TextInput
+            style={styles.textInput}
+            placeholder="Type a message..."
+            placeholderTextColor={Colors.textMuted}
+            value={text}
+            onChangeText={setText}
+            multiline
+          />
+          <TouchableOpacity
+            style={[styles.sendBtn, (!text.trim() || sending) && { opacity: 0.4 }]}
+            onPress={handleSend}
+            disabled={!text.trim() || sending}
+          >
+            {sending
+              ? <ActivityIndicator size="small" color={Colors.white} />
+              : <Ionicons name="send" size={18} color={Colors.white} />
+            }
+          </TouchableOpacity>
+        </View>
       </KeyboardAvoidingView>
     </View>
   );

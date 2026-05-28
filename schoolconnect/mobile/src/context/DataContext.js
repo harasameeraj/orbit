@@ -32,6 +32,7 @@ export function DataProvider({ children }) {
 
   const schoolId = profile?.school_id;
   const activeChannelRef = useRef(null);
+  const activeThreadIdRef = useRef(null);
 
   // Resolve teacher class
   const teacherClasses = profile?.teacher_classes || [];
@@ -239,8 +240,18 @@ export function DataProvider({ children }) {
       });
     });
     activeChannelRef.current = channel;
+    activeThreadIdRef.current = thread.id;
 
     return thread;
+  };
+
+  const refreshMessagesAction = async () => {
+    const threadId = activeThreadIdRef.current;
+    if (!threadId) return;
+    try {
+      const msgs = await getMessages(threadId);
+      setMessages(msgs || []);
+    } catch (_e) { /* silent */ }
   };
 
   const switchStudent = async (student) => {
@@ -263,6 +274,7 @@ export function DataProvider({ children }) {
       addBehaviourLog: addBehaviourLogAction,
       sendMessage: sendMessageAction,
       loadMessages: loadMessagesAction,
+      refreshMessages: refreshMessagesAction,
       reloadData: loadInitialData,
       switchStudent,
     }}>
