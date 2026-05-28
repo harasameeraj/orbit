@@ -26,11 +26,16 @@ import { upsertMarks, publishMarks, getMarksByClass, supabase, uploadHomeworkIma
 const SUBJECTS = ['Mathematics', 'Science', 'English', 'Social Studies', 'Hindi', 'Physical Education'];
 const EXAM_TYPES = ['Unit Test 1', 'Unit Test 2', 'Unit Test 3', 'Mid Term', 'Final Exam', 'Assignment'];
 
-export default function TeacherMarks() {
+export default function TeacherMarks({ route }) {
   const { user } = useAuth();
   const { students, addHomework, reloadData, loadingData, classId, schoolId } = useData();
 
-  const [tab, setTab] = useState('marks'); // 'marks' or 'homework'
+  const [tab, setTab] = useState(route?.params?.tab || 'marks'); // 'marks' or 'homework'
+
+  // Switch tab if navigated with a param (e.g. from dashboard "Post Homework" button)
+  useEffect(() => {
+    if (route?.params?.tab) setTab(route.params.tab);
+  }, [route?.params?.tab]);
 
   // Marks State
   const [subject, setSubject] = useState('Mathematics');

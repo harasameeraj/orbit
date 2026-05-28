@@ -126,9 +126,14 @@ export default function TeacherDashboard({ navigation }) {
               <Text style={styles.actionBtnText}>Mark Attendance</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={[styles.actionBtn, styles.actionBtnOutline]} onPress={() => navigation.navigate('Marks')}>
+            <TouchableOpacity style={[styles.actionBtn, styles.actionBtnOutline]} onPress={() => navigation.navigate('Marks', { tab: 'marks' })}>
               <Ionicons name="star-outline" size={18} color={Colors.brand} />
               <Text style={[styles.actionBtnText, styles.actionBtnTextOutline]}>Upload Marks</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={[styles.actionBtn, styles.actionBtnGreen]} onPress={() => navigation.navigate('Marks', { tab: 'homework' })}>
+              <Ionicons name="book-outline" size={18} color={Colors.white} />
+              <Text style={styles.actionBtnText}>Post Homework</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={[styles.actionBtn, styles.actionBtnGhost]} onPress={() => setShowAnnModal(true)}>
@@ -317,11 +322,12 @@ const styles = StyleSheet.create({
   progressFill: { height: '100%', backgroundColor: Colors.accentGreen, borderRadius: 2 },
   section: { gap: 10 },
   sectionTitle: { fontSize: 14, fontWeight: '700', color: Colors.text, textTransform: 'uppercase', letterSpacing: 0.5 },
-  actionsGrid: { flexDirection: 'row', gap: 8 },
-  actionBtn: { flex: 1, backgroundColor: Colors.brand, borderRadius: Radius.md, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 },
+  actionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  actionBtn: { width: '48%', backgroundColor: Colors.brand, borderRadius: Radius.md, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 },
   actionBtnOutline: { backgroundColor: 'transparent', borderWidth: 1, borderColor: Colors.brand },
+  actionBtnGreen: { backgroundColor: Colors.accentGreen },
   actionBtnGhost: { backgroundColor: Colors.surface2 },
-  actionBtnText: { color: Colors.white, fontWeight: '700', fontSize: 11 },
+  actionBtnText: { color: Colors.white, fontWeight: '700', fontSize: 12 },
   actionBtnTextOutline: { color: Colors.brand },
   actionBtnTextGhost: { color: Colors.textSecondary },
   twoColumn: { gap: 16 },
