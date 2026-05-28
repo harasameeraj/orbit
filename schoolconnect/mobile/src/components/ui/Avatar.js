@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, Image, StyleSheet } from 'react-native';
-import { Colors, Radius } from '../../theme/colors';
+import { Colors } from '../../theme/colors';
 
 export default function Avatar({ name, url, size = 40, style }) {
   const initials = (name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();

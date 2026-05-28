@@ -7,11 +7,6 @@ import { createClient } from '@supabase/supabase-js';
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
 
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-  console.warn(
-    'Supabase env vars missing. Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY in mobile/.env'
-  );
-}
 
 // ─── Client with AsyncStorage for session persistence ────────────────────────
 export const supabase = createClient(
@@ -26,6 +21,18 @@ export const supabase = createClient(
     },
   }
 );
+
+// ─── School lookup (no auth required) ────────────────────────────────────────
+
+export async function getSchoolByCode(code) {
+  const { data, error } = await supabase
+    .from('schools')
+    .select('id, name, code, brand_color, logo_url')
+    .eq('code', code.toUpperCase().trim())
+    .maybeSingle();
+  if (error) return null;
+  return data;
+}
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 

@@ -17,7 +17,7 @@ import { useData } from '../../context/DataContext';
 import Card from '../../components/ui/Card';
 import Badge from '../../components/ui/Badge';
 import Button from '../../components/ui/Button';
-import { Colors, Radius, Shadows } from '../../theme/colors';
+import { Colors, Radius } from '../../theme/colors';
 
 export default function TeacherDashboard({ navigation }) {
   const { user, profile } = useAuth();
@@ -54,8 +54,8 @@ export default function TeacherDashboard({ navigation }) {
       setAnnTitle('');
       setAnnBody('');
       setShowAnnModal(false);
-    } catch (e) {
-      console.error(e);
+    } catch (_e) {
+      // silent
     }
     setPosting(false);
   };
@@ -299,11 +299,9 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bg },
   content: { padding: 16, gap: 16, paddingBottom: 40 },
   hero: {
-    background: 'linear-gradient(135deg, ' + Colors.brand + ' 0%, ' + Colors.brand + 'dd 100%)',
     backgroundColor: Colors.brand,
     borderRadius: Radius['2xl'],
     padding: 24,
-    color: Colors.white,
   },
   heroSchool: { fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.75)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 },
   heroDate: { fontSize: 22, fontWeight: '800', color: Colors.white, marginBottom: 12 },

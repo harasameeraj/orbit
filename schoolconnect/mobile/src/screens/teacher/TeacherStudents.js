@@ -17,9 +17,7 @@ import { useAuth } from '../../context/AuthContext';
 import { getBehaviourLogs } from '../../lib/supabase';
 import Card from '../../components/ui/Card';
 import Avatar from '../../components/ui/Avatar';
-import Badge from '../../components/ui/Badge';
 import Button from '../../components/ui/Button';
-import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import { Colors, Radius, Shadows } from '../../theme/colors';
 
 const REMARK_TYPES = [
@@ -64,7 +62,7 @@ export default function TeacherStudents() {
     const today = new Date().toISOString().split('T')[0];
     getBehaviourLogs(selected.id, today)
       .then(logs => setStudentLogs(logs || []))
-      .catch(console.error)
+      .catch(() => {})
       .finally(() => setLoadingLogs(false));
   }, [selected]);
 
@@ -90,8 +88,7 @@ export default function TeacherStudents() {
       ]);
       setRemarkText('');
       Alert.alert('Success', 'Remark saved successfully!');
-    } catch (err) {
-      console.error(err);
+    } catch (_err) {
       Alert.alert('Error', 'Failed to save remark.');
     } finally {
       setRemarkSaving(false);

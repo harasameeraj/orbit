@@ -13,7 +13,6 @@ import { useData } from '../../context/DataContext';
 import { getAttendanceByDate } from '../../lib/supabase';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
-import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import { Colors, Radius } from '../../theme/colors';
 
 export default function TeacherAttendance() {
@@ -47,8 +46,8 @@ export default function TeacherAttendance() {
         });
       }
       setStatuses(nextStatuses);
-    } catch (err) {
-      console.error('Failed to load today\'s attendance:', err);
+    } catch (_err) {
+      // silent
     }
     setLoading(false);
   };
@@ -81,8 +80,8 @@ export default function TeacherAttendance() {
       await markAttendance(records, today);
       setSubmitted(true);
       setTimeout(() => setSubmitted(false), 3000);
-    } catch (e) {
-      console.error('Attendance submit failed:', e);
+    } catch (_e) {
+      // silent
     }
     setSubmitting(false);
   };

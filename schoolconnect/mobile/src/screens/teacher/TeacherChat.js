@@ -3,6 +3,8 @@ import {
   View,
   Text,
   FlatList,
+  ScrollView,
+  RefreshControl,
   TextInput,
   TouchableOpacity,
   StyleSheet,
@@ -17,7 +19,6 @@ import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import { supabase } from '../../lib/supabase';
 import Avatar from '../../components/ui/Avatar';
-import Card from '../../components/ui/Card';
 import { Colors, Radius, Shadows } from '../../theme/colors';
 
 export default function TeacherChat() {
@@ -55,8 +56,8 @@ export default function TeacherChat() {
 
       if (error) throw error;
       setThreads(data || []);
-    } catch (e) {
-      console.error('loadTeacherThreads error:', e);
+    } catch (_e) {
+      // silent
     }
     setLoadingThreads(false);
   };
@@ -113,8 +114,8 @@ export default function TeacherChat() {
       setThreads(prev => [newThread, ...prev.filter(t => t.id !== thread.id)]);
       setSelectedThread(newThread);
       setShowChatModal(true);
-    } catch (e) {
-      console.error('initiateFromStudent error:', e);
+    } catch (_e) {
+      // silent
     }
     setLoadingThreads(false);
   };
@@ -125,8 +126,8 @@ export default function TeacherChat() {
     try {
       await sendMessage(selectedThread.id, text);
       setText('');
-    } catch (e) {
-      console.error('Send error:', e);
+    } catch (_e) {
+      // silent
     }
     setSending(false);
   };
@@ -136,8 +137,6 @@ export default function TeacherChat() {
 
   const parentName = selectedThread?.parent?.name || 'Parent';
   const studentName = selectedThread?.student?.name || '';
-  const parentInitial = parentName.charAt(0);
-  const teacherInitial = profile?.name?.charAt(0) || 'T';
 
   const renderMessage = ({ item: msg }) => {
     const isMe = msg.sender_id === user.id;

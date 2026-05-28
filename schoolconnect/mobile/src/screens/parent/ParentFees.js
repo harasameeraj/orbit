@@ -14,13 +14,13 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
-import { supabase, getStudentFees } from '../../lib/supabase';
+import { getStudentFees } from '../../lib/supabase';
 import Card from '../../components/ui/Card';
 import Badge from '../../components/ui/Badge';
 import Button from '../../components/ui/Button';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import ChildSwitcher from '../../components/shared/ChildSwitcher';
-import { Colors, Radius, Shadows } from '../../theme/colors';
+import { Colors, Radius } from '../../theme/colors';
 
 function fmt(n) {
   if (n == null) return '—';
@@ -52,8 +52,8 @@ export default function ParentFees() {
     try {
       const data = await getStudentFees(student.id);
       setFees(data || []);
-    } catch (e) {
-      console.error('Failed to load student fees:', e);
+    } catch (_e) {
+      // silent
     }
     setLoading(false);
   };
@@ -160,7 +160,7 @@ export default function ParentFees() {
                           {f.fee_structures?.frequency ? f.fee_structures.frequency.toUpperCase() : 'ONCE'}
                         </Text>
                       </View>
-                      <Badge variant={f.status === 'paid' ? 'green' : f.status === 'overdue' ? 'red' : f.status === 'pending' ? 'yellow' : 'brand'}>
+                      <Badge variant={f.status === 'paid' ? 'green' : f.status === 'overdue' ? 'red' : f.status === 'pending' ? 'amber' : 'brand'}>
                         {meta.label}
                       </Badge>
                     </View>

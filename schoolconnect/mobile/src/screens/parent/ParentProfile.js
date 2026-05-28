@@ -63,8 +63,7 @@ export default function ParentProfile() {
       setPhotoUrl(simulatedUrl);
       Alert.alert('Success', 'Profile photo updated successfully!');
       reloadData();
-    } catch (err) {
-      console.error(err);
+    } catch (_err) {
       Alert.alert('Error', 'Failed to update photo.');
     } finally {
       setUploading(false);

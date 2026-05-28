@@ -7,7 +7,7 @@ import Card from '../../components/ui/Card';
 import Avatar from '../../components/ui/Avatar';
 import Badge from '../../components/ui/Badge';
 import Button from '../../components/ui/Button';
-import { Colors, Radius, Shadows } from '../../theme/colors';
+import { Colors, Radius } from '../../theme/colors';
 
 export default function TeacherProfile() {
   const { user, profile, logout } = useAuth();

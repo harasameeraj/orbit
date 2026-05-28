@@ -38,8 +38,8 @@ export default function ParentChat() {
 
       const th = await loadMessages(user.id, teacherId, student.id);
       setThread({ ...th, teacher: tc?.profiles });
-    } catch (e) {
-      console.error('Chat init error:', e);
+    } catch (_e) {
+      // silent
     }
     setLoading(false);
   }
@@ -50,8 +50,8 @@ export default function ParentChat() {
     try {
       await sendMessage(thread.id, text);
       setText('');
-    } catch (e) {
-      console.error('Send error:', e);
+    } catch (_e) {
+      // silent
     }
     setSending(false);
   };

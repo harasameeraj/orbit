@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import {
-  getStudentsByClass, getAllStudents,
+  getStudentsByClass,
   getStudentAttendance, submitClassAttendance,
   getMarksByStudent,
   getHomeworkByClass, createHomework,
@@ -70,7 +70,7 @@ export function DataProvider({ children }) {
         } else if (profile?.role === 'teacher') {
           if (newAnn.class_id && newAnn.class_id !== classId) return;
         }
-        supabase.from('profiles').select('name').eq('id', newAnn.teacher_id).single().then(({ data }) => {
+        supabase.from('profiles').select('name').eq('id', newAnn.teacher_id).maybeSingle().then(({ data }) => {
           const record = { ...newAnn, profiles: { name: data?.name || 'School Administration' } };
           setAnnouncements(prev => {
             if (prev.some(a => a.id === record.id)) return prev;
@@ -91,7 +91,6 @@ export function DataProvider({ children }) {
     try {
       if (profile.role === 'teacher') {
         if (!classId) {
-          console.warn('Teacher has no assigned class yet.');
           setLoadingData(false);
           return;
         }
@@ -120,8 +119,8 @@ export function DataProvider({ children }) {
           await loadParentData(studs[0].id, studs[0].class_id);
         }
       }
-    } catch (e) {
-      console.error('Data load error:', e);
+    } catch (_e) {
+      // silent
     }
     setLoadingData(false);
   }
@@ -190,7 +189,7 @@ export function DataProvider({ children }) {
     });
     supabase.functions.invoke('send-notification', {
       body: { type: 'announcement', title: ann.title, body: ann.body, school_id: schoolId, class_id: classId }
-    }).catch(console.warn);
+    }).catch(() => {});
     setAnnouncements(prev => [created, ...prev]);
     return created;
   };

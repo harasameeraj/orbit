@@ -36,12 +36,18 @@ export default function TeacherNavigator() {
         },
         tabBarActiveTintColor: Colors.brand,
         tabBarInactiveTintColor: Colors.textMuted,
+        tabBarLabelStyle: {
+          fontSize: 10,
+          fontWeight: '600',
+        },
         tabBarStyle: {
           backgroundColor: Colors.white,
           borderTopColor: Colors.border,
-          height: 60,
-          paddingBottom: 8,
-          paddingTop: 8,
+          borderTopWidth: 1,
+          paddingTop: 6,
+        },
+        tabBarItemStyle: {
+          paddingBottom: 4,
         },
         headerStyle: {
           backgroundColor: Colors.white,
@@ -57,10 +63,10 @@ export default function TeacherNavigator() {
         },
       })}
     >
-      <Tab.Screen name="Dashboard" component={TeacherDashboard} options={{ title: 'Dashboard' }} />
-      <Tab.Screen name="Attendance" component={TeacherAttendance} options={{ title: 'Mark Attendance' }} />
-      <Tab.Screen name="Marks" component={TeacherMarks} options={{ title: 'Marks & Homework' }} />
-      <Tab.Screen name="Students" component={TeacherStudents} options={{ title: 'Class Students' }} />
+      <Tab.Screen name="Dashboard" component={TeacherDashboard} options={{ title: 'Home' }} />
+      <Tab.Screen name="Attendance" component={TeacherAttendance} options={{ title: 'Attendance' }} />
+      <Tab.Screen name="Marks" component={TeacherMarks} options={{ title: 'Marks' }} />
+      <Tab.Screen name="Students" component={TeacherStudents} options={{ title: 'Students' }} />
       <Tab.Screen name="Chat" component={TeacherChat} options={{ title: 'Messages' }} />
       <Tab.Screen name="Profile" component={TeacherProfile} options={{ title: 'Profile' }} />
     </Tab.Navigator>

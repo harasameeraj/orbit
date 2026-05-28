@@ -8,6 +8,7 @@ import {
   TextInput,
   Modal,
   FlatList,
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Alert,
@@ -16,23 +17,18 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import Card from '../../components/ui/Card';
-import Badge from '../../components/ui/Badge';
 import Button from '../../components/ui/Button';
-import LoadingSpinner from '../../components/ui/LoadingSpinner';
-import { Colors, Radius, Shadows } from '../../theme/colors';
+import { Colors, Radius } from '../../theme/colors';
 import { upsertMarks, publishMarks, getMarksByClass, supabase } from '../../lib/supabase';
 
 const SUBJECTS = ['Mathematics', 'Science', 'English', 'Social Studies', 'Hindi', 'Physical Education'];
 const EXAM_TYPES = ['Unit Test 1', 'Unit Test 2', 'Unit Test 3', 'Mid Term', 'Final Exam', 'Assignment'];
 
 export default function TeacherMarks() {
-  const { user, profile } = useAuth();
-  const { students, addHomework, reloadData, loadingData } = useData();
+  const { user } = useAuth();
+  const { students, addHomework, reloadData, loadingData, classId, schoolId } = useData();
 
   const [tab, setTab] = useState('marks'); // 'marks' or 'homework'
-
-  const classId = profile?.teacher_classes?.[0]?.class_id;
-  const schoolId = profile?.school_id;
 
   // Marks State
   const [subject, setSubject] = useState('Mathematics');
@@ -70,8 +66,8 @@ export default function TeacherMarks() {
         });
       }
       setScores(dbScores);
-    } catch (err) {
-      console.error('Failed to load marks:', err);
+    } catch (_err) {
+      // silent
     }
     setLoadingScores(false);
   };
@@ -134,7 +130,7 @@ export default function TeacherMarks() {
             class_id: classId,
           },
         })
-        .catch(console.warn);
+        .catch(() => {});
 
       Alert.alert('Success', 'Marks published! Parents have been notified.');
     } catch (e) {
