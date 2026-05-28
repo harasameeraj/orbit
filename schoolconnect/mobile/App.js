@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import * as Notifications from 'expo-notifications';
+import * as Device from 'expo-device';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { DataProvider } from './src/context/DataContext';
 import AuthNavigator from './src/navigation/AuthNavigator';
@@ -9,9 +11,42 @@ import TeacherNavigator from './src/navigation/TeacherNavigator';
 import LoadingSpinner from './src/components/ui/LoadingSpinner';
 import { View, Text, StyleSheet } from 'react-native';
 import { Colors } from './src/theme/colors';
+import { saveFcmToken } from './src/lib/supabase';
+
+// Show notifications even when app is in foreground
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
+
+async function registerPushToken(userId) {
+  try {
+    if (!Device.isDevice) return;
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
+    if (existingStatus !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+    if (finalStatus !== 'granted') return;
+    const tokenData = await Notifications.getExpoPushTokenAsync();
+    await saveFcmToken(userId, tokenData.data);
+  } catch (_e) {
+    // silent — notifications are non-critical
+  }
+}
 
 function RootNavigator() {
   const { user, profile, loading } = useAuth();
+
+  useEffect(() => {
+    if (user?.id) {
+      registerPushToken(user.id);
+    }
+  }, [user?.id]);
 
   if (loading) {
     return <LoadingSpinner fullScreen={true} color={Colors.brand} />;

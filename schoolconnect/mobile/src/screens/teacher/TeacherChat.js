@@ -274,18 +274,17 @@ export default function TeacherChat() {
             )}
             <View style={styles.inputRow}>
               <TextInput
-                style={[styles.textInput, !withinChatHours && { backgroundColor: Colors.surface2 }]}
+                style={styles.textInput}
                 placeholder="Type a message..."
                 placeholderTextColor={Colors.textMuted}
                 value={text}
                 onChangeText={setText}
                 multiline
-                editable={withinChatHours}
               />
               <TouchableOpacity
-                style={[styles.sendBtn, (!text.trim() || !withinChatHours || sending) && { opacity: 0.4 }]}
+                style={[styles.sendBtn, (!text.trim() || sending) && { opacity: 0.4 }]}
                 onPress={handleSend}
-                disabled={!text.trim() || !withinChatHours || sending}
+                disabled={!text.trim() || sending}
               >
                 {sending ? (
                   <ActivityIndicator size="small" color={Colors.white} />

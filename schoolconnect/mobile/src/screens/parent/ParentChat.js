@@ -10,7 +10,7 @@ import { Colors, Radius } from '../../theme/colors';
 
 export default function ParentChat() {
   const { user, profile } = useAuth();
-  const { students, activeStudent, messages, loadMessages, sendMessage } = useData();
+  const { students, activeStudent, messages, loadMessages, sendMessage, schoolId } = useData();
   const [text, setText] = useState('');
   const [thread, setThread] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -27,11 +27,32 @@ export default function ParentChat() {
   async function initChat() {
     setLoading(true);
     try {
-      const { data: tc } = await supabase.from('teacher_classes')
+      // Prefer the designated class teacher; fall back to any teacher in the class
+      let { data: tc } = await supabase.from('teacher_classes')
         .select('teacher_id, profiles(id, name)')
         .eq('class_id', student.class_id)
         .eq('is_class_teacher', true)
         .maybeSingle();
+
+      if (!tc) {
+        const { data: anyTc } = await supabase.from('teacher_classes')
+          .select('teacher_id, profiles(id, name)')
+          .eq('class_id', student.class_id)
+          .maybeSingle();
+        tc = anyTc;
+      }
+
+      // Last resort: any teacher in the school
+      if (!tc && schoolId) {
+        const { data: schoolTeacher } = await supabase.from('profiles')
+          .select('id, name')
+          .eq('school_id', schoolId)
+          .eq('role', 'teacher')
+          .maybeSingle();
+        if (schoolTeacher) {
+          tc = { teacher_id: schoolTeacher.id, profiles: schoolTeacher };
+        }
+      }
 
       const teacherId = tc?.teacher_id;
       if (!teacherId) { setLoading(false); return; }
@@ -129,9 +150,9 @@ export default function ParentChat() {
           multiline
         />
         <TouchableOpacity
-          style={[styles.sendBtn, (!text.trim() || sending) && { opacity: 0.4 }]}
+          style={[styles.sendBtn, (!text.trim() || !thread || sending) && { opacity: 0.4 }]}
           onPress={handleSend}
-          disabled={!text.trim() || sending}
+          disabled={!text.trim() || !thread || sending}
         >
           {sending ? (
             <ActivityIndicator size="small" color={Colors.white} />

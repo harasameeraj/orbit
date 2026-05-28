@@ -176,6 +176,15 @@ export function DataProvider({ children }) {
       class_id: classId,
       teacher_id: user.id,
     });
+    supabase.functions.invoke('send-notification', {
+      body: {
+        type: 'homework',
+        title: `New Homework: ${hw.subject}`,
+        body: hw.title,
+        school_id: schoolId,
+        class_id: classId,
+      }
+    }).catch(() => {});
     setHomework(prev => [created, ...prev]);
     return created;
   };
