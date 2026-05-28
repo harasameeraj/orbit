@@ -8,31 +8,34 @@ import {
   TextInput,
   Modal,
   FlatList,
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Alert,
+  Image,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import Card from '../../components/ui/Card';
-import Badge from '../../components/ui/Badge';
 import Button from '../../components/ui/Button';
-import LoadingSpinner from '../../components/ui/LoadingSpinner';
-import { Colors, Radius, Shadows } from '../../theme/colors';
-import { upsertMarks, publishMarks, getMarksByClass, supabase } from '../../lib/supabase';
+import { Colors, Radius } from '../../theme/colors';
+import { upsertMarks, publishMarks, getMarksByClass, supabase, uploadHomeworkImage } from '../../lib/supabase';
 
 const SUBJECTS = ['Mathematics', 'Science', 'English', 'Social Studies', 'Hindi', 'Physical Education'];
 const EXAM_TYPES = ['Unit Test 1', 'Unit Test 2', 'Unit Test 3', 'Mid Term', 'Final Exam', 'Assignment'];
 
-export default function TeacherMarks() {
-  const { user, profile } = useAuth();
-  const { students, addHomework, reloadData, loadingData } = useData();
+export default function TeacherMarks({ route }) {
+  const { user } = useAuth();
+  const { students, addHomework, reloadData, loadingData, classId, schoolId } = useData();
 
-  const [tab, setTab] = useState('marks'); // 'marks' or 'homework'
+  const [tab, setTab] = useState(route?.params?.tab || 'marks'); // 'marks' or 'homework'
 
-  const classId = profile?.teacher_classes?.[0]?.class_id;
-  const schoolId = profile?.school_id;
+  // Switch tab if navigated with a param (e.g. from dashboard "Post Homework" button)
+  useEffect(() => {
+    if (route?.params?.tab) setTab(route.params.tab);
+  }, [route?.params?.tab]);
 
   // Marks State
   const [subject, setSubject] = useState('Mathematics');
@@ -47,6 +50,7 @@ export default function TeacherMarks() {
   const [hwSubject, setHwSubject] = useState('Mathematics');
   const [hwDue, setHwDue] = useState('');
   const [hwDesc, setHwDesc] = useState('');
+  const [hwImage, setHwImage] = useState(null);
   const [hwLoading, setHwLoading] = useState(false);
 
   // Picker modals
@@ -70,8 +74,8 @@ export default function TeacherMarks() {
         });
       }
       setScores(dbScores);
-    } catch (err) {
-      console.error('Failed to load marks:', err);
+    } catch (_err) {
+      // silent
     }
     setLoadingScores(false);
   };
@@ -134,13 +138,60 @@ export default function TeacherMarks() {
             class_id: classId,
           },
         })
-        .catch(console.warn);
+        .catch(() => {});
 
       Alert.alert('Success', 'Marks published! Parents have been notified.');
     } catch (e) {
       Alert.alert('Error', 'Publish failed: ' + e.message);
     }
     setPublishing(false);
+  };
+
+  const pickImage = async (useCamera) => {
+    try {
+      let result;
+      if (useCamera) {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission needed', 'Camera permission is required to take photos.');
+          return;
+        }
+        result = await ImagePicker.launchCameraAsync({
+          mediaTypes: ['images'],
+          quality: 0.7,
+          allowsEditing: true,
+          aspect: [4, 3],
+        });
+      } else {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission needed', 'Photo library permission is required.');
+          return;
+        }
+        result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ['images'],
+          quality: 0.7,
+          allowsEditing: true,
+          aspect: [4, 3],
+        });
+      }
+      if (!result.canceled && result.assets?.[0]) {
+        setHwImage(result.assets[0].uri);
+      }
+    } catch (e) {
+      Alert.alert('Error', 'Could not open image picker: ' + e.message);
+    }
+  };
+
+  // Normalize DD-MM-YYYY or DD/MM/YYYY → YYYY-MM-DD
+  const normalizeDueDate = (input) => {
+    if (!input) return null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(input)) return input; // already correct
+    const parts = input.split(/[-\/]/);
+    if (parts.length === 3 && parts[0].length <= 2) {
+      return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+    }
+    return input;
   };
 
   const handlePostHw = async () => {
@@ -150,17 +201,33 @@ export default function TeacherMarks() {
     }
     setHwLoading(true);
     try {
+      // Try image upload — if it fails, post homework without image
+      let imageUrl = null;
+      if (hwImage) {
+        try {
+          imageUrl = await uploadHomeworkImage(hwImage);
+        } catch (imgErr) {
+          console.warn('Image upload failed:', imgErr?.message);
+          // Continue posting without image
+        }
+      }
+
       await addHomework({
         subject: hwSubject,
         title: hwTitle,
         description: hwDesc,
-        due_date: hwDue || null,
+        due_date: normalizeDueDate(hwDue),
         is_draft: false,
+        ...(imageUrl ? { image_url: imageUrl } : {}),
       });
       setHwTitle('');
       setHwDesc('');
       setHwDue('');
-      Alert.alert('Success', 'Homework posted! Parents in your class have been notified.');
+      setHwImage(null);
+      const msg = hwImage && !imageUrl
+        ? 'Homework posted! (Image could not be uploaded — try again later)'
+        : 'Homework posted! Parents in your class have been notified.';
+      Alert.alert('Success', msg);
     } catch (e) {
       Alert.alert('Error', 'Failed: ' + e.message);
     }
@@ -364,6 +431,30 @@ export default function TeacherMarks() {
                 />
               </View>
 
+              {/* Image attachment */}
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Attach Photo (Optional)</Text>
+                {hwImage ? (
+                  <View style={styles.imagePreviewContainer}>
+                    <Image source={{ uri: hwImage }} style={styles.imagePreview} resizeMode="cover" />
+                    <TouchableOpacity style={styles.removeImageBtn} onPress={() => setHwImage(null)}>
+                      <Ionicons name="close-circle" size={26} color={Colors.accentRed} />
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={styles.imageBtnRow}>
+                    <TouchableOpacity style={styles.imagePickerBtn} onPress={() => pickImage(true)}>
+                      <Ionicons name="camera-outline" size={20} color={Colors.brand} />
+                      <Text style={styles.imagePickerBtnText}>Camera</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.imagePickerBtn} onPress={() => pickImage(false)}>
+                      <Ionicons name="image-outline" size={20} color={Colors.brand} />
+                      <Text style={styles.imagePickerBtnText}>Gallery</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+
               <View style={styles.noteBox}>
                 <Text style={styles.noteTitle}>Teacher's Note</Text>
                 <Text style={styles.noteText}>
@@ -518,6 +609,25 @@ const styles = StyleSheet.create({
   noteBox: { backgroundColor: Colors.accentGreenLight, padding: 12, borderRadius: Radius.md },
   noteTitle: { fontSize: 12, fontWeight: '700', color: Colors.accentGreen, marginBottom: 2 },
   noteText: { fontSize: 11, color: Colors.accentGreen, lineHeight: 16 },
+
+  // Image picker
+  imageBtnRow: { flexDirection: 'row', gap: 12 },
+  imagePickerBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1.5,
+    borderColor: Colors.brand,
+    borderRadius: Radius.md,
+    paddingVertical: 12,
+    backgroundColor: Colors.brandLight,
+  },
+  imagePickerBtnText: { fontSize: 13, fontWeight: '700', color: Colors.brand },
+  imagePreviewContainer: { position: 'relative', borderRadius: Radius.md, overflow: 'hidden' },
+  imagePreview: { width: '100%', height: 180, borderRadius: Radius.md },
+  removeImageBtn: { position: 'absolute', top: 6, right: 6, backgroundColor: Colors.white, borderRadius: 13 },
 
   // Picker Modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: 24 },

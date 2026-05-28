@@ -95,7 +95,11 @@ export default function ParentDashboard({ navigation }) {
 
         {/* Homework */}
         {latestHw && (
-          <View style={[styles.reportRow, { backgroundColor: Colors.accentAmberLight, borderWidth: 1, borderColor: Colors.accentAmber, borderStyle: 'dashed' }]}>
+          <TouchableOpacity
+            style={[styles.reportRow, { backgroundColor: Colors.accentAmberLight, borderWidth: 1, borderColor: Colors.accentAmber, borderStyle: 'dashed' }]}
+            onPress={() => navigation.navigate('Homework')}
+            activeOpacity={0.7}
+          >
             <Ionicons name="book" size={18} color={Colors.accentAmber} style={{ marginRight: 10 }} />
             <View style={{ flex: 1 }}>
               <Text style={{ fontWeight: '700', fontSize: 13, color: Colors.text }}>Upcoming Homework</Text>
@@ -104,8 +108,9 @@ export default function ParentDashboard({ navigation }) {
                 <Ionicons name="calendar" size={12} color={Colors.accentAmber} />
                 <Text style={{ fontSize: 12, color: Colors.accentAmber, fontWeight: '600' }}>Due {latestHw.due_date || latestHw.dueDate}</Text>
               </View>
+              <Text style={{ fontSize: 11, color: Colors.brand, fontWeight: '700', marginTop: 6 }}>Tap to view details →</Text>
             </View>
-          </View>
+          </TouchableOpacity>
         )}
       </Card>
 
@@ -115,10 +120,11 @@ export default function ParentDashboard({ navigation }) {
         {[
           { label: 'View Attendance Record', icon: 'checkmark-circle-outline', screen: 'Attendance' },
           { label: 'View Marks & Progress', icon: 'star-outline', screen: 'Marks' },
+          { label: 'View Homework', icon: 'book-outline', screen: 'Homework' },
           { label: 'Message Teacher', icon: 'chatbubble-outline', screen: 'Chat' },
           { label: 'Fees & Payment', icon: 'card-outline', screen: 'Fees' },
         ].map(({ label, icon, screen }, i) => (
-          <TouchableOpacity key={label} style={[styles.quickLink, i < 3 && { borderBottomWidth: 1, borderBottomColor: Colors.border }]} onPress={() => navigation.navigate(screen)}>
+          <TouchableOpacity key={label} style={[styles.quickLink, i < 4 && { borderBottomWidth: 1, borderBottomColor: Colors.border }]} onPress={() => navigation.navigate(screen)}>
             <Ionicons name={icon} size={18} color={Colors.textMuted} />
             <Text style={styles.quickText}>{label}</Text>
             <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
@@ -145,10 +151,10 @@ export default function ParentDashboard({ navigation }) {
         <Card variant="lg" style={{ padding: 20, marginBottom: 20 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 }}>
             <View style={[styles.reportIcon, { backgroundColor: Colors.brandLight }]}>
-              <Text style={{ fontWeight: '800', color: Colors.brand, fontSize: 14 }}>{behaviourLogs[0].teacher_name?.charAt(0) || 'T'}</Text>
+              <Text style={{ fontWeight: '800', color: Colors.brand, fontSize: 14 }}>{(behaviourLogs[0].profiles?.name || behaviourLogs[0].teacher_name || 'T').charAt(0)}</Text>
             </View>
             <View>
-              <Text style={{ fontWeight: '700', color: Colors.text }}>{behaviourLogs[0].teacher_name || 'Class Teacher'}</Text>
+              <Text style={{ fontWeight: '700', color: Colors.text }}>{behaviourLogs[0].profiles?.name || behaviourLogs[0].teacher_name || 'Class Teacher'}</Text>
               <Text style={{ fontSize: 12, color: Colors.textMuted }}>
                 {behaviourLogs[0].created_at ? new Date(behaviourLogs[0].created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : 'Recent'}
               </Text>

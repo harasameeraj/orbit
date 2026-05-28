@@ -1,7 +1,7 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from './AuthContext';
 import {
-  getStudentsByClass, getAllStudents,
+  getStudentsByClass,
   getStudentAttendance, submitClassAttendance,
   getMarksByStudent,
   getHomeworkByClass, createHomework,
@@ -29,9 +29,17 @@ export function DataProvider({ children }) {
   const [messages, setMessages] = useState([]);
   const [loadingData, setLoadingData] = useState(false);
   const [switchingChild, setSwitchingChild] = useState(false);
+  const [dataError, setDataError] = useState(null);
 
   const schoolId = profile?.school_id;
   const activeChannelRef = useRef(null);
+  const activeThreadIdRef = useRef(null);
+  const studentsRef = useRef(students);
+
+  // Keep a stable ref for students to avoid realtime subscription churn
+  useEffect(() => {
+    studentsRef.current = students;
+  }, [students]);
 
   // Resolve teacher class
   const teacherClasses = profile?.teacher_classes || [];
@@ -52,6 +60,7 @@ export function DataProvider({ children }) {
   }, []);
 
   // Realtime subscriptions for announcements
+  // Uses schoolId and classId as deps (stable primitives), NOT the students array
   useEffect(() => {
     if (!schoolId) return;
 
@@ -64,13 +73,14 @@ export function DataProvider({ children }) {
         filter: `school_id=eq.${schoolId}`
       }, (payload) => {
         const newAnn = payload.new;
+        // Use ref to avoid dependency on students array
         if (profile?.role === 'parent') {
-          const firstStudent = students[0];
+          const firstStudent = studentsRef.current[0];
           if (newAnn.class_id && firstStudent && newAnn.class_id !== firstStudent.class_id) return;
         } else if (profile?.role === 'teacher') {
           if (newAnn.class_id && newAnn.class_id !== classId) return;
         }
-        supabase.from('profiles').select('name').eq('id', newAnn.teacher_id).single().then(({ data }) => {
+        supabase.from('profiles').select('name').eq('id', newAnn.teacher_id).maybeSingle().then(({ data }) => {
           const record = { ...newAnn, profiles: { name: data?.name || 'School Administration' } };
           setAnnouncements(prev => {
             if (prev.some(a => a.id === record.id)) return prev;
@@ -83,15 +93,15 @@ export function DataProvider({ children }) {
     return () => {
       supabase.removeChannel(annChannel);
     };
-  }, [schoolId, profile?.role, classId, students]);
+  }, [schoolId, profile?.role, classId]);
 
   async function loadInitialData() {
     if (!schoolId) return;
     setLoadingData(true);
+    setDataError(null);
     try {
       if (profile.role === 'teacher') {
         if (!classId) {
-          console.warn('Teacher has no assigned class yet.');
           setLoadingData(false);
           return;
         }
@@ -121,7 +131,8 @@ export function DataProvider({ children }) {
         }
       }
     } catch (e) {
-      console.error('Data load error:', e);
+      console.warn('DataContext loadInitialData error:', e?.message);
+      setDataError('Failed to load data. Pull down to retry.');
     }
     setLoadingData(false);
   }
@@ -139,8 +150,10 @@ export function DataProvider({ children }) {
       studentClassId ? getTimetable(studentClassId) : Promise.resolve([]),
     ]);
 
-    setAttendance({ [studentId]: att || [] });
-    setMarks(groupMarksBySubject(mks || [], studentId));
+    // Merge attendance per-student instead of replacing all
+    setAttendance(prev => ({ ...prev, [studentId]: att || [] }));
+    // Merge marks per-student instead of replacing all
+    setMarks(prev => ({ ...prev, ...groupMarksBySubject(mks || [], studentId) }));
     setHomework(hw || []);
     setAnnouncements(anns || []);
     setBehaviourLogs(beh || []);
@@ -177,6 +190,15 @@ export function DataProvider({ children }) {
       class_id: classId,
       teacher_id: user.id,
     });
+    supabase.functions.invoke('send-notification', {
+      body: {
+        type: 'homework',
+        title: `New Homework: ${hw.subject}`,
+        body: hw.title,
+        school_id: schoolId,
+        class_id: classId,
+      }
+    }).catch((e) => console.warn('Push notification failed:', e?.message));
     setHomework(prev => [created, ...prev]);
     return created;
   };
@@ -190,7 +212,7 @@ export function DataProvider({ children }) {
     });
     supabase.functions.invoke('send-notification', {
       body: { type: 'announcement', title: ann.title, body: ann.body, school_id: schoolId, class_id: classId }
-    }).catch(console.warn);
+    }).catch((e) => console.warn('Push notification failed:', e?.message));
     setAnnouncements(prev => [created, ...prev]);
     return created;
   };
@@ -231,8 +253,20 @@ export function DataProvider({ children }) {
       });
     });
     activeChannelRef.current = channel;
+    activeThreadIdRef.current = thread.id;
 
     return thread;
+  };
+
+  const refreshMessagesAction = async () => {
+    const threadId = activeThreadIdRef.current;
+    if (!threadId) return;
+    try {
+      const msgs = await getMessages(threadId);
+      setMessages(msgs || []);
+    } catch (e) {
+      console.warn('DataContext refreshMessages error:', e?.message);
+    }
   };
 
   const switchStudent = async (student) => {
@@ -240,14 +274,19 @@ export function DataProvider({ children }) {
     setSwitchingChild(true);
     setActiveStudent(student);
     setMessages([]);
-    await loadParentData(student.id, student.class_id);
+    try {
+      await loadParentData(student.id, student.class_id);
+    } catch (e) {
+      console.warn('DataContext switchStudent error:', e?.message);
+      setDataError('Failed to load child data.');
+    }
     setSwitchingChild(false);
   };
 
   return (
     <DataContext.Provider value={{
       students, activeStudent, attendance, homework, announcements, behaviourLogs,
-      notices, timetable, marks, messages, loadingData, switchingChild,
+      notices, timetable, marks, messages, loadingData, switchingChild, dataError,
       classId, schoolId,
       markAttendance: markAttendanceAction,
       addHomework: addHomeworkAction,
@@ -255,6 +294,7 @@ export function DataProvider({ children }) {
       addBehaviourLog: addBehaviourLogAction,
       sendMessage: sendMessageAction,
       loadMessages: loadMessagesAction,
+      refreshMessages: refreshMessagesAction,
       reloadData: loadInitialData,
       switchStudent,
     }}>

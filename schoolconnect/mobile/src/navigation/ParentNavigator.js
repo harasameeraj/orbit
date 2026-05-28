@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import ParentDashboard from '../screens/parent/ParentDashboard';
 import ParentAttendance from '../screens/parent/ParentAttendance';
 import ParentMarks from '../screens/parent/ParentMarks';
+import ParentHomework from '../screens/parent/ParentHomework';
 import ParentChat from '../screens/parent/ParentChat';
 import ParentFees from '../screens/parent/ParentFees';
 import ParentProfile from '../screens/parent/ParentProfile';
@@ -24,6 +25,8 @@ export default function ParentNavigator() {
             iconName = focused ? 'checkmark-circle' : 'checkmark-circle-outline';
           } else if (route.name === 'Marks') {
             iconName = focused ? 'ribbon' : 'ribbon-outline';
+          } else if (route.name === 'Homework') {
+            iconName = focused ? 'book' : 'book-outline';
           } else if (route.name === 'Chat') {
             iconName = focused ? 'chatbubbles' : 'chatbubbles-outline';
           } else if (route.name === 'Fees') {
@@ -36,12 +39,18 @@ export default function ParentNavigator() {
         },
         tabBarActiveTintColor: Colors.brand,
         tabBarInactiveTintColor: Colors.textMuted,
+        tabBarLabelStyle: {
+          fontSize: 10,
+          fontWeight: '600',
+        },
         tabBarStyle: {
           backgroundColor: Colors.white,
           borderTopColor: Colors.border,
-          height: 60,
-          paddingBottom: 8,
-          paddingTop: 8,
+          borderTopWidth: 1,
+          paddingTop: 6,
+        },
+        tabBarItemStyle: {
+          paddingBottom: 4,
         },
         headerStyle: {
           backgroundColor: Colors.white,
@@ -59,10 +68,11 @@ export default function ParentNavigator() {
     >
       <Tab.Screen name="Dashboard" component={ParentDashboard} options={{ title: 'Home' }} />
       <Tab.Screen name="Attendance" component={ParentAttendance} options={{ title: 'Attendance' }} />
-      <Tab.Screen name="Marks" component={ParentMarks} options={{ title: 'Marks & Progress' }} />
+      <Tab.Screen name="Marks" component={ParentMarks} options={{ title: 'Marks' }} />
+      <Tab.Screen name="Homework" component={ParentHomework} options={{ title: 'Homework' }} />
       <Tab.Screen name="Chat" component={ParentChat} options={{ title: 'Messages' }} />
-      <Tab.Screen name="Fees" component={ParentFees} options={{ title: 'Fees & Dues' }} />
-      <Tab.Screen name="Profile" component={ParentProfile} options={{ title: 'Student Profile' }} />
+      <Tab.Screen name="Fees" component={ParentFees} options={{ title: 'Fees' }} />
+      <Tab.Screen name="Profile" component={ParentProfile} options={{ title: 'Profile' }} />
     </Tab.Navigator>
   );
 }

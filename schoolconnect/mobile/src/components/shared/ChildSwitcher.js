@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { useData } from '../../context/DataContext';
-import { Colors, Radius } from '../../theme/colors';
+import { Colors } from '../../theme/colors';
 
 export default function ChildSwitcher() {
   const { students, activeStudent, switchStudent, switchingChild } = useData();

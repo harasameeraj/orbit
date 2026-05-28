@@ -14,13 +14,13 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
-import { supabase, getStudentFees } from '../../lib/supabase';
+import { getStudentFees } from '../../lib/supabase';
 import Card from '../../components/ui/Card';
 import Badge from '../../components/ui/Badge';
 import Button from '../../components/ui/Button';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import ChildSwitcher from '../../components/shared/ChildSwitcher';
-import { Colors, Radius, Shadows } from '../../theme/colors';
+import { Colors, Radius } from '../../theme/colors';
 
 function fmt(n) {
   if (n == null) return '—';
@@ -42,29 +42,33 @@ export default function ParentFees() {
 
   const [fees, setFees] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [feeError, setFeeError] = useState(null);
   const [showPayModal, setShowPayModal] = useState(null);
   const [successMsg, setSuccessMsg] = useState('');
   const [payForm, setPayForm] = useState({ cardNo: '', expiry: '', cvv: '', upiId: '', mode: 'upi' });
 
-  const fetchFees = async () => {
-    if (!student.id) return;
+  const fetchFees = async (studentId) => {
+    if (!studentId) return;
     setLoading(true);
+    setFeeError(null);
     try {
-      const data = await getStudentFees(student.id);
+      const data = await getStudentFees(studentId);
       setFees(data || []);
     } catch (e) {
-      console.error('Failed to load student fees:', e);
+      console.warn('ParentFees fetchFees error:', e?.message);
+      setFeeError('Failed to load fee records. Pull down to retry.');
     }
     setLoading(false);
   };
 
   useEffect(() => {
-    fetchFees();
-  }, [student.id]);
+    // Use activeStudent?.id directly — it's a stable primitive that changes when child is switched
+    fetchFees(activeStudent?.id || students[0]?.id);
+  }, [activeStudent?.id, students[0]?.id]);
 
   const handleRefresh = async () => {
     await reloadData();
-    await fetchFees();
+    await fetchFees(student.id);
   };
 
   // Filter fee announcements
@@ -160,7 +164,7 @@ export default function ParentFees() {
                           {f.fee_structures?.frequency ? f.fee_structures.frequency.toUpperCase() : 'ONCE'}
                         </Text>
                       </View>
-                      <Badge variant={f.status === 'paid' ? 'green' : f.status === 'overdue' ? 'red' : f.status === 'pending' ? 'yellow' : 'brand'}>
+                      <Badge variant={f.status === 'paid' ? 'green' : f.status === 'overdue' ? 'red' : f.status === 'pending' ? 'amber' : 'brand'}>
                         {meta.label}
                       </Badge>
                     </View>
