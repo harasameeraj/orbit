@@ -114,7 +114,7 @@ export default function ParentMarks() {
             {[...studentMarks[0].exams].reverse().map((e, i) => (
               <View key={i} style={styles.barWrap}>
                 <Text style={styles.barValue}>{e.score}</Text>
-                <View style={[styles.bar, { height: (e.score / 100) * 120, backgroundColor: Colors.brand }]} />
+                <View style={[styles.bar, { height: (e.score / (e.max || 100)) * 120, backgroundColor: Colors.brand }]} />
                 <Text style={styles.barLabel} numberOfLines={1}>{e.name.split(' ').slice(0, 2).join(' ')}</Text>
               </View>
             ))}

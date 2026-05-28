@@ -10,6 +10,8 @@ import {
   ActivityIndicator,
   FlatList,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useData } from '../../context/DataContext';
@@ -17,9 +19,7 @@ import { useAuth } from '../../context/AuthContext';
 import { getBehaviourLogs } from '../../lib/supabase';
 import Card from '../../components/ui/Card';
 import Avatar from '../../components/ui/Avatar';
-import Badge from '../../components/ui/Badge';
 import Button from '../../components/ui/Button';
-import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import { Colors, Radius, Shadows } from '../../theme/colors';
 
 const REMARK_TYPES = [
@@ -64,7 +64,7 @@ export default function TeacherStudents() {
     const today = new Date().toISOString().split('T')[0];
     getBehaviourLogs(selected.id, today)
       .then(logs => setStudentLogs(logs || []))
-      .catch(console.error)
+      .catch(() => {})
       .finally(() => setLoadingLogs(false));
   }, [selected]);
 
@@ -90,8 +90,7 @@ export default function TeacherStudents() {
       ]);
       setRemarkText('');
       Alert.alert('Success', 'Remark saved successfully!');
-    } catch (err) {
-      console.error(err);
+    } catch (_err) {
       Alert.alert('Error', 'Failed to save remark.');
     } finally {
       setRemarkSaving(false);
@@ -199,7 +198,10 @@ export default function TeacherStudents() {
         animationType="slide"
         onRequestClose={() => setSelected(null)}
       >
-        <View style={styles.modalContainer}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalContainer}
+        >
           {/* Header */}
           <View style={styles.modalHeader}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -331,7 +333,7 @@ export default function TeacherStudents() {
               )}
             </ScrollView>
           )}
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );

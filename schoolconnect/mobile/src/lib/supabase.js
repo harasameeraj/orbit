@@ -2,21 +2,19 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 
 // ─── Config ──────────────────────────────────────────────────────────────────
-// Reads from .env via react-native-dotenv or falls back to hardcoded values.
-// In production, these would come from app config / EAS secrets.
-const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
-const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
+// Reads from .env via Expo's built-in env support.
+// In production, these come from app config / EAS secrets.
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-  console.warn(
-    'Supabase env vars missing. Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY in mobile/.env'
-  );
+  console.error('Missing EXPO_PUBLIC_SUPABASE_URL or EXPO_PUBLIC_SUPABASE_ANON_KEY in environment');
 }
 
 // ─── Client with AsyncStorage for session persistence ────────────────────────
 export const supabase = createClient(
-  SUPABASE_URL || 'https://placeholder.supabase.co',
-  SUPABASE_ANON_KEY || 'placeholder',
+  SUPABASE_URL,
+  SUPABASE_ANON_KEY,
   {
     auth: {
       storage: AsyncStorage,
@@ -26,6 +24,40 @@ export const supabase = createClient(
     },
   }
 );
+
+// ─── Retry utility for transient network failures ────────────────────────────
+async function withRetry(fn, retries = 2, delayMs = 1000) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const isLast = attempt === retries;
+      const isNetworkError = err?.message?.includes('fetch') ||
+        err?.message?.includes('network') ||
+        err?.message?.includes('Failed to fetch') ||
+        err?.code === 'PGRST301';
+      if (isLast || !isNetworkError) throw err;
+      await new Promise(r => setTimeout(r, delayMs * (attempt + 1)));
+    }
+  }
+}
+
+// ─── School lookup (no auth required) ────────────────────────────────────────
+
+export async function getSchoolByCode(code) {
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('schools')
+      .select('id, name, code, brand_color, logo_url')
+      .eq('code', code.toUpperCase().trim())
+      .maybeSingle();
+    if (error) {
+      console.warn('getSchoolByCode error:', error.message);
+      return null;
+    }
+    return data;
+  });
+}
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
@@ -45,13 +77,15 @@ export async function getSession() {
 }
 
 export async function getProfile(userId) {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*, schools(*), teacher_classes(class_id, subject, is_class_teacher, classes(id, name, grade, section))')
-    .eq('id', userId)
-    .single();
-  if (error) throw error;
-  return data;
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*, schools(*), teacher_classes(class_id, subject, is_class_teacher, classes(id, name, grade, section))')
+      .eq('id', userId)
+      .single();
+    if (error) throw error;
+    return data;
+  });
 }
 
 // ─── Students ─────────────────────────────────────────────────────────────────
@@ -331,6 +365,40 @@ export async function getTeachersByClass(classId) {
     .eq('class_id', classId);
   if (error) throw error;
   return (data || []).map(r => r.profiles).filter(Boolean);
+}
+
+// ─── Homework Image Upload ────────────────────────────────────────────────────
+
+export async function uploadHomeworkImage(localUri) {
+  const ext = (localUri.split('.').pop() || 'jpg').toLowerCase().split('?')[0];
+  const contentType = ext === 'png' ? 'image/png' : 'image/jpeg';
+  const filePath = `${Date.now()}.${ext}`;
+
+  // FormData + direct REST upload — most reliable approach for React Native/iOS
+  const formData = new FormData();
+  formData.append('file', { uri: localUri, name: `upload.${ext}`, type: contentType });
+
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData?.session?.access_token;
+
+  const res = await fetch(
+    `${SUPABASE_URL}/storage/v1/object/homework-images/${filePath}`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        apikey: SUPABASE_ANON_KEY,
+      },
+      body: formData,
+    }
+  );
+
+  if (!res.ok) {
+    const msg = await res.text().catch(() => 'Upload failed');
+    throw new Error(msg);
+  }
+
+  return `${SUPABASE_URL}/storage/v1/object/public/homework-images/${filePath}`;
 }
 
 // ─── FCM Token ────────────────────────────────────────────────────────────────
