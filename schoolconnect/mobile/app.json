@@ -35,7 +35,14 @@
     },
     "plugins": [
       "expo-asset",
-      "expo-notifications"
+      "expo-notifications",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow SchoolConnect to access your photos to attach homework images.",
+          "cameraPermission": "Allow SchoolConnect to use your camera to take homework photos."
+        }
+      ]
     ],
     "extra": {
       "eas": {

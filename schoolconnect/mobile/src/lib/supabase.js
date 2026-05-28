@@ -340,6 +340,25 @@ export async function getTeachersByClass(classId) {
   return (data || []).map(r => r.profiles).filter(Boolean);
 }
 
+// ─── Homework Image Upload ────────────────────────────────────────────────────
+
+export async function uploadHomeworkImage(localUri) {
+  const ext = (localUri.split('.').pop() || 'jpg').toLowerCase().split('?')[0];
+  const contentType = ext === 'png' ? 'image/png' : 'image/jpeg';
+  const filePath = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+
+  const res = await fetch(localUri);
+  const arrayBuffer = await res.arrayBuffer();
+
+  const { error } = await supabase.storage
+    .from('homework-images')
+    .upload(filePath, arrayBuffer, { contentType, upsert: false });
+
+  if (error) throw error;
+
+  return supabase.storage.from('homework-images').getPublicUrl(filePath).data.publicUrl;
+}
+
 // ─── FCM Token ────────────────────────────────────────────────────────────────
 
 export async function saveFcmToken(userId, token) {
