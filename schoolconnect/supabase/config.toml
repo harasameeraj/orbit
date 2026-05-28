@@ -1,2 +1,4 @@
-[project]
-project_id = "ouljlevztweykjoxjhal"
+[api]
+enabled = true
+port = 54321
+schemas = ["public"]
